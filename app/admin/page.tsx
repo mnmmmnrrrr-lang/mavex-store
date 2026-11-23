@@ -452,7 +452,7 @@ export default function AdminPage() {
                       </div>
                       <label style={{ display: "grid", gap: 5, fontSize: 12, minWidth: 210 }}>Order status
                         <select aria-label={`Status for ${order.id}`} value={order.status} onChange={e => void updateOperation("order", order.id, { status: e.target.value })} style={inputStyle}>
-                          {["Pending confirmation", "Awaiting payment review", "Confirmed", "Processing", "Shipped", "Delivered", "Cancelled"].map(s => <option key={s}>{s}</option>)}
+                          {["Pending confirmation", "Awaiting payment review", "Confirmed", "Processing", "Shipped", "Delivered", "Cancelled", "Cancelled by customer"].map(s => <option key={s}>{s}</option>)}
                         </select>
                       </label>
                     </div>

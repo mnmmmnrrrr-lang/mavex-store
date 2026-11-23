@@ -68,6 +68,29 @@ export default function AccountPage() {
     await supabase.auth.signOut(); setSignedIn(false); setOrders([]); setCodeSent(false); setCode(""); setMessage("");
   }
 
+  async function cancelOrder(order: CustomerOrder) {
+    if (!window.confirm(`Cancel order ${order.id}?`)) return;
+    setBusy(true);
+    setMessage("");
+    try {
+      const { data } = await supabase.auth.getSession();
+      const token = data.session?.access_token;
+      if (!token) throw new Error("Please sign in again to cancel your order.");
+      const response = await fetch(`/api/customer/orders/${encodeURIComponent(order.id)}`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Could not cancel this order.");
+      setOrders((current) => current.map((item) => item.id === order.id ? { ...item, status: result.status } : item));
+      setMessage(`Order ${order.id} was cancelled.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Could not cancel this order.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const inputStyle = { width: "100%", padding: 13, marginTop: 7, border: "1px solid #ddd", borderRadius: 7, color: "#111", background: "#fff", fontSize: 15 };
   const statusSteps = ["Pending confirmation", "Confirmed", "Processing", "Shipped", "Delivered"];
 
@@ -88,6 +111,8 @@ export default function AccountPage() {
           {message && <p role="status" style={{ color: message.startsWith("We sent") ? "#16804a" : "#b42318", marginTop: 12, lineHeight: 1.6 }}>{message}</p>}
         </form>}
 
+        {signedIn && message && <p role="status" style={{ margin: "0 0 16px", color: /cancelled/i.test(message) ? "#16804a" : "#b42318", lineHeight: 1.6 }}>{message}</p>}
+
         {signedIn && orders.length === 0 && <div style={{ background: "white", padding: 28, borderRadius: 12 }}><h2>No orders found for this email address.</h2><p style={{ color: "#666", marginTop: 8 }}>Use the same email address you entered at checkout. New orders will appear here after checkout.</p><Link href="/#shop" className="add-button" style={{ display: "inline-block", marginTop: 18, textDecoration: "none" }}>SHOP THE COLLECTION</Link></div>}
 
         {signedIn && orders.length > 0 && <div style={{ display: "grid", gap: 16 }}>{orders.map(order => {
@@ -97,6 +122,7 @@ export default function AccountPage() {
             {!/cancelled/i.test(order.status) && <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 5, margin: "22px 0" }}>{statusSteps.map((step, index) => { const active = index <= currentStep && currentStep >= 0; return <div key={step} style={{ textAlign: "center", color: active ? "#17213c" : "#aaa", fontSize: 10 }}><div style={{ height: 4, background: active ? "#f890c8" : "#e7e7e7", borderRadius: 4, marginBottom: 7 }} />{step}</div>; })}</div>}
             {order.trackingNumber && <p style={{ padding: 12, background: "#f8f3f6", borderRadius: 7, marginBottom: 14 }}>Courier tracking number: <strong>{order.trackingNumber}</strong></p>}
             <div style={{ borderTop: "1px solid #eee", paddingTop: 12 }}>{order.items.map((item, index) => <p key={`${order.id}-${index}`} style={{ padding: 3, fontSize: 13 }}>{item.name} · {item.color} / {item.size} × {item.quantity}</p>)}</div>
+            {!/shipped|delivered|cancelled/i.test(order.status) && <button type="button" disabled={busy} onClick={() => void cancelOrder(order)} style={{ marginTop: 16, border: "1px solid #efcaca", borderRadius: 6, background: "#fff", color: "#a22", padding: "11px 15px", fontWeight: 700, cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.6 : 1 }}>CANCEL ORDER</button>}
           </article>;
         })}</div>}
       </section>
