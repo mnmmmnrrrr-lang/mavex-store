@@ -51,7 +51,8 @@ export default function CheckoutPage() {
   });
 
   useEffect(() => {
-    const saved = localStorage.getItem("mavex-cart");
+    const isBuyNow = new URLSearchParams(window.location.search).get("buyNow") === "1";
+    const saved = localStorage.getItem(isBuyNow ? "mavex-buy-now" : "mavex-cart");
     if (saved) {
       try {
         setCart(JSON.parse(saved));
@@ -131,7 +132,8 @@ export default function CheckoutPage() {
       const response = await fetch("/api/orders", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(order) });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Could not save your order.");
-      localStorage.removeItem("mavex-cart");
+      const isBuyNow = new URLSearchParams(window.location.search).get("buyNow") === "1";
+      localStorage.removeItem(isBuyNow ? "mavex-buy-now" : "mavex-cart");
       localStorage.setItem("mavex-last-order-email", form.email.trim().toLowerCase());
 
       setCart([]);

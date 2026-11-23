@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense, useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 
@@ -70,6 +70,7 @@ const sizeGuide = [
 
 function ProductContent() {
   const params = useParams();
+  const router = useRouter();
   const productId = String(params.id);
 
   const [product, setProduct] = useState<Product | null>(null);
@@ -267,16 +268,30 @@ function ProductContent() {
     setMessage("");
   }
 
-  function addToCart() {
-    if (!product) return;
+  function getSelectedCartItem(): CartItem | null {
+    if (!product) return null;
     if (!size) {
       setMessage("PLEASE SELECT A SIZE.");
-      return;
+      return null;
     }
     if (!available || !selectedVariant) {
       setMessage("THIS SIZE IS SOLD OUT.");
-      return;
+      return null;
     }
+    return {
+      productId: product.id,
+      name: product.name,
+      price: currentPrice,
+      size,
+      color,
+      quantity,
+      image: images[0] || "",
+    };
+  }
+
+  function addToCart() {
+    const selectedItem = getSelectedCartItem();
+    if (!selectedItem) return false;
 
     let cart: CartItem[] = [];
 
@@ -289,27 +304,27 @@ function ProductContent() {
 
     const existing = cart.find(
       (item) =>
-        item.productId === product.id &&
-        item.size === size &&
-        item.color === color
+        item.productId === selectedItem.productId &&
+        item.size === selectedItem.size &&
+        item.color === selectedItem.color
     );
 
     if (existing) {
-      existing.quantity = Math.min(existing.quantity + quantity, stock);
+      existing.quantity = Math.min(existing.quantity + selectedItem.quantity, stock);
     } else {
-      cart.push({
-        productId: product.id,
-        name: product.name,
-        price: currentPrice,
-        size,
-        color,
-        quantity,
-        image: images[0] || "",
-      });
+      cart.push(selectedItem);
     }
 
     localStorage.setItem("mavex-cart", JSON.stringify(cart));
     setMessage("ADDED TO YOUR BAG ✓");
+    return true;
+  }
+
+  function buyNow() {
+    const selectedItem = getSelectedCartItem();
+    if (!selectedItem) return;
+    localStorage.setItem("mavex-buy-now", JSON.stringify([selectedItem]));
+    router.push("/checkout?buyNow=1");
   }
 
   const arrowStyle: React.CSSProperties = {
@@ -683,11 +698,13 @@ function ProductContent() {
             QUANTITY
           </p>
 
-          <div
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div
             style={{
               display: "inline-flex",
               alignItems: "center",
               border: "1px solid #ddd",
+              flexShrink: 0,
             }}
           >
             <button
@@ -721,6 +738,26 @@ function ProductContent() {
             >
               +
             </button>
+            </div>
+            <button
+            type="button"
+            onClick={buyNow}
+            disabled={!hasAvailableSizes}
+            style={{
+              flex: 1,
+              minHeight: 42,
+              padding: "10px 14px",
+              background: "#f890c8",
+              color: "#111",
+              border: "2px solid #111",
+              fontWeight: 900,
+              letterSpacing: 1,
+              cursor: hasAvailableSizes ? "pointer" : "not-allowed",
+              opacity: hasAvailableSizes ? 1 : 0.6,
+            }}
+          >
+            BUY NOW
+            </button>
           </div>
 
           <button
@@ -742,7 +779,7 @@ function ProductContent() {
           </button>
 
           {message && (
-            <p style={{ color: "#27834b", fontSize: 13 }}>{message}</p>
+            <p style={{ color: message.includes("ADDED") ? "#27834b" : "#c00", fontSize: 13 }}>{message}</p>
           )}
 
           <div style={{ marginTop: 28 }}>

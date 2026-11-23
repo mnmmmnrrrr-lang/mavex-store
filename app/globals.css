@@ -66,12 +66,12 @@ button {
 }
 
 .hero {
-  min-height: 620px;
+  min-height: 520px;
   background: #111;
   color: white;
   display: flex;
   align-items: center;
-  padding: 70px 9%;
+  padding: 50px 9%;
 }
 
 .hero-content > p:first-child,
@@ -368,8 +368,8 @@ footer small {
   }
 
   .hero {
-    min-height: 490px;
-    padding: 45px 6%;
+    min-height: 410px;
+    padding: 35px 6%;
   }
 
   .hero h2 {
