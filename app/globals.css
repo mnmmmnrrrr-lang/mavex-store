@@ -376,10 +376,28 @@ footer small {
   .product-card h3 {
     font-size: 11px;
     line-height: 1.4;
+    min-height: 2.8em;
   }
 
   .product-card p {
     font-size: 11px;
+    line-height: 1.4;
+    min-height: 1.4em;
+  }
+
+  .product-card {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .product-card > .add-button {
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    min-height: 64px;
+    margin-top: auto;
+    padding: 12px 10px;
+    line-height: 1.4;
   }
 
   .about {
