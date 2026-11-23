@@ -41,7 +41,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     } catch { inputVariants = []; }
     if (inputVariants.length === 0 || inputVariants.length > 60) throw new Error("Add at least one size and color variant.");
 
-    const allowedSizes = ["S", "M", "L", "XL", "XXL"];
+    const allowedSizes = ["XS", "S", "M", "L", "XL", "XXL"];
     const seen = new Set<string>();
     const variants = inputVariants.map((variant, index) => {
       const color = String(variant.color || "").trim();

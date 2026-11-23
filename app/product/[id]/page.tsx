@@ -56,6 +56,7 @@ const colorCodes: Record<string, string> = {
 };
 
 const sizeGuide = [
+  { size: "XS", width: "54", length: "70" },
   { size: "S", width: "104", length: "68" },
   { size: "M", width: "108", length: "70" },
   { size: "L", width: "112", length: "72" },
@@ -582,7 +583,7 @@ function ProductContent() {
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
+              gridTemplateColumns: `repeat(${Math.max(sizes.length, 1)}, minmax(0, 1fr))`,
               gap: 7,
               margin: "12px 0",
             }}
@@ -602,9 +603,9 @@ function ProductContent() {
                   style={{
                     padding: "10px 3px",
                     minHeight: 64,
-                    background: size === item ? "#111" : "#fff",
-                    color: size === item ? "#fff" : "#111",
-                    border: "1px solid #ddd",
+                    background: size === item ? "#111" : "#f890c8",
+                    color: size === item ? "#f890c8" : "#111",
+                    border: "2px solid #111",
                     opacity: inStock ? 1 : 0.35,
                     textDecoration: inStock ? "none" : "line-through",
                     cursor: inStock ? "pointer" : "not-allowed",
@@ -629,7 +630,8 @@ function ProductContent() {
 
           {showSizeGuide && (
             <table
-              style={{
+                className="mavex-size-chart"
+                style={{
                 width: "100%",
                 borderCollapse: "collapse",
                 fontSize: 12,

@@ -29,8 +29,9 @@ type OperationsData = {
   comments: { id: string; productId: string; productName: string; name: string; rating: number; message: string; date: string; status: string; reply?: string }[];
 };
 
-const sizes = ["S", "M", "L", "XL", "XXL"];
+const sizes = ["XS", "S", "M", "L", "XL", "XXL"];
 const standardMeasurements: Record<string, { width: string; length: string }> = {
+  XS: { width: "54", length: "70" },
   S: { width: "104", length: "68" },
   M: { width: "108", length: "70" },
   L: { width: "112", length: "72" },

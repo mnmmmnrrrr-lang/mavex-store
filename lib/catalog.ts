@@ -1,4 +1,4 @@
-const winterSizes = ["S", "M", "L", "XL", "XXL"];
+const winterSizes = ["XS", "S", "M", "L", "XL", "XXL"];
 
 function makeVariants(color: string) {
   return winterSizes.map((size) => ({
