@@ -78,6 +78,7 @@ export default function Home() {
           <a href="#home">HOME</a>
           <a href="#shop">SHOP</a>
           <a href="#about">ABOUT</a>
+          <a href="/account">MY ORDERS</a>
         </nav>
         <a href="/cart">BAG</a>
       </header>
@@ -138,7 +139,7 @@ export default function Home() {
         <h2>MAVEX®</h2>
         <p>STREET CULTURE. OWN YOUR STYLE.</p>
         <small>© 2026 MAVEX. ALL RIGHTS RESERVED.</small>
-        <p style={{ marginTop: 16, display: "flex", justifyContent: "center", gap: 18 }}><a href="/returns" style={{ color: "#555", fontSize: 11 }}>RETURNS &amp; EXCHANGES</a><a href="/admin" style={{ color: "#888", fontSize: 10 }}>ADMIN</a></p>
+        <p style={{ marginTop: 16, display: "flex", justifyContent: "center", gap: 18 }}><a href="/account" style={{ color: "#555", fontSize: 11 }}>MY ORDERS</a><a href="/returns" style={{ color: "#555", fontSize: 11 }}>RETURNS &amp; EXCHANGES</a><a href="/admin" style={{ color: "#888", fontSize: 10 }}>ADMIN</a></p>
       </footer>
     </main>
   );

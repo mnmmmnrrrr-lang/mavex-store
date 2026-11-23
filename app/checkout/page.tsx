@@ -18,6 +18,7 @@ const PAYMENT = {
 };
 
 type Item = {
+  productId?: string;
   name: string;
   price: number;
   size: string;
@@ -33,6 +34,9 @@ export default function CheckoutPage() {
   const [proof, setProof] = useState("");
   const [transaction, setTransaction] = useState("");
   const [message, setMessage] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [savingOrder, setSavingOrder] = useState(false);
+  const [recentOrderId, setRecentOrderId] = useState("");
 
   const [form, setForm] = useState({
     name: "",
@@ -66,21 +70,23 @@ export default function CheckoutPage() {
 
   function updateField(field: string, value: string) {
     setForm((old) => ({ ...old, [field]: value }));
+    setFieldErrors((old) => ({ ...old, [field]: "" }));
   }
 
   function handleProof(file?: File) {
     if (!file) return;
 
     if (!file.type.startsWith("image/")) {
-      setMessage("Please upload an image.");
+      setFieldErrors((old) => ({ ...old, proof: "Choose an image file for your payment screenshot." }));
       return;
     }
 
     if (file.size > 3 * 1024 * 1024) {
-      setMessage("Image must be smaller than 3 MB.");
+      setFieldErrors((old) => ({ ...old, proof: "The image must be smaller than 3 MB." }));
       return;
     }
 
+    setFieldErrors((old) => ({ ...old, proof: "" }));
     const reader = new FileReader();
     reader.onload = () => setProof(String(reader.result));
     reader.readAsDataURL(file);
@@ -92,27 +98,22 @@ export default function CheckoutPage() {
       return;
     }
 
-    if (
-      !form.name.trim() ||
-      !form.phone.trim() ||
-      !governorate ||
-      !form.city.trim() ||
-      !form.village.trim() ||
-      !form.street.trim()
-    ) {
-      setMessage("Please complete all required information.");
+    const nextErrors: Record<string, string> = {};
+    if (!form.name.trim()) nextErrors.name = "Enter your full name.";
+    if (!form.phone.trim()) nextErrors.phone = "Enter your mobile number.";
+    else if (!/^01[0125][0-9]{8}$/.test(form.phone.trim())) nextErrors.phone = "Enter a valid Egyptian mobile number, such as 01012345678.";
+    if (!governorate) nextErrors.governorate = "Choose your governorate.";
+    if (!form.city.trim()) nextErrors.city = "Enter your city or district.";
+    if (!form.village.trim()) nextErrors.village = "Enter your village or area.";
+    if (!form.street.trim()) nextErrors.street = "Enter your street address.";
+    if (payment !== "cod" && !proof) nextErrors.proof = "Upload your payment transfer screenshot.";
+    if (Object.keys(nextErrors).length) {
+      setFieldErrors(nextErrors);
+      setMessage("");
       return;
     }
-
-    if (!/^01[0125][0-9]{8}$/.test(form.phone)) {
-      setMessage("Please enter a valid Egyptian mobile number.");
-      return;
-    }
-
-    if (payment !== "cod" && !proof) {
-      setMessage("Please upload your payment transfer screenshot.");
-      return;
-    }
+    setFieldErrors({});
+    setSavingOrder(true);
 
     const order = {
       customer: form,
@@ -128,11 +129,15 @@ export default function CheckoutPage() {
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Could not save your order.");
       localStorage.removeItem("mavex-cart");
+      localStorage.setItem("mavex-last-order-phone", form.phone);
 
       setCart([]);
+      setRecentOrderId(result.id);
       setMessage("Your order was received successfully. Order: " + result.id);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Could not save your order.");
+    } finally {
+      setSavingOrder(false);
     }
   }
 
@@ -146,6 +151,8 @@ export default function CheckoutPage() {
     background: "#fff",
     color: "#111",
   };
+  const errorStyle = { color: "#b42318", fontSize: 12, display: "block" as const, marginTop: 6 };
+  const fieldStyle = (field: string) => ({ ...inputStyle, borderColor: fieldErrors[field] ? "#b42318" : "#ddd" });
 
   return (
     <main style={{
@@ -171,6 +178,7 @@ export default function CheckoutPage() {
         <a href="/cart" style={{ color: "#111", fontSize: 12 }}>
           BACK TO BAG
         </a>
+        <a href="/account" style={{ color: "#111", fontSize: 12 }}>MY ORDERS</a>
       </header>
 
       <h1 style={{ fontSize: 32, marginBottom: 8 }}>
@@ -198,16 +206,18 @@ export default function CheckoutPage() {
           </h2>
 
           <label>Full name *</label>
-          <input style={inputStyle} value={form.name}
+          <input style={fieldStyle("name")} value={form.name}
             onChange={(e) => updateField("name", e.target.value)}
             placeholder="Your full name" />
+          {fieldErrors.name && <small style={errorStyle}>{fieldErrors.name}</small>}
 
           <label style={{ display: "block", marginTop: 15 }}>
             Mobile number *
           </label>
-          <input style={inputStyle} type="tel" value={form.phone}
+          <input style={fieldStyle("phone")} type="tel" value={form.phone}
             onChange={(e) => updateField("phone", e.target.value)}
             placeholder="01XXXXXXXXX" />
+          {fieldErrors.phone && <small style={errorStyle}>{fieldErrors.phone}</small>}
 
           <label style={{ display: "block", marginTop: 15 }}>
             Additional phone (optional)
@@ -229,34 +239,38 @@ export default function CheckoutPage() {
           <label style={{ display: "block", marginTop: 15 }}>
             Governorate *
           </label>
-          <select style={inputStyle} value={governorate}
-            onChange={(e) => setGovernorate(e.target.value)}>
+          <select style={fieldStyle("governorate")} value={governorate}
+            onChange={(e) => { setGovernorate(e.target.value); setFieldErrors(old => ({ ...old, governorate: "" })); }}>
             <option value="">Select governorate</option>
             {governorates.map((g) => (
               <option key={g} value={g}>{g}</option>
             ))}
           </select>
+          {fieldErrors.governorate && <small style={errorStyle}>{fieldErrors.governorate}</small>}
 
           <label style={{ display: "block", marginTop: 15 }}>
             City / District / Markaz *
           </label>
-          <input style={inputStyle} value={form.city}
+          <input style={fieldStyle("city")} value={form.city}
             onChange={(e) => updateField("city", e.target.value)}
             placeholder="Enter city or district" />
+          {fieldErrors.city && <small style={errorStyle}>{fieldErrors.city}</small>}
 
           <label style={{ display: "block", marginTop: 15 }}>
             Village / Area *
           </label>
-          <input style={inputStyle} value={form.village}
+          <input style={fieldStyle("village")} value={form.village}
             onChange={(e) => updateField("village", e.target.value)}
             placeholder="Enter village or area" />
+          {fieldErrors.village && <small style={errorStyle}>{fieldErrors.village}</small>}
 
           <label style={{ display: "block", marginTop: 15 }}>
             Street / Address *
           </label>
-          <input style={inputStyle} value={form.street}
+          <input style={fieldStyle("street")} value={form.street}
             onChange={(e) => updateField("street", e.target.value)}
             placeholder="Street name and details" />
+          {fieldErrors.street && <small style={errorStyle}>{fieldErrors.street}</small>}
 
           <label style={{ display: "block", marginTop: 15 }}>
             Building / Apartment
@@ -350,6 +364,7 @@ export default function CheckoutPage() {
                     borderRadius: 6
                   }} />
               )}
+              {fieldErrors.proof && <small style={errorStyle}>{fieldErrors.proof}</small>}
 
               <label style={{ display: "block", marginTop: 15 }}>
                 Transaction reference (optional)
@@ -360,7 +375,7 @@ export default function CheckoutPage() {
             </div>
           )}
 
-          <button onClick={submitOrder} style={{
+          <button onClick={submitOrder} disabled={savingOrder} style={{
             width: "100%",
             background: "#111",
             color: "#fff",
@@ -369,9 +384,10 @@ export default function CheckoutPage() {
             marginTop: 25,
             fontWeight: "bold",
             fontSize: 14,
-            cursor: "pointer"
+            cursor: savingOrder ? "wait" : "pointer",
+            opacity: savingOrder ? 0.65 : 1
           }}>
-            PLACE ORDER
+            {savingOrder ? "SAVING YOUR ORDER..." : "PLACE ORDER"}
           </button>
 
           {message && (
@@ -384,6 +400,7 @@ export default function CheckoutPage() {
               {message}
             </p>
           )}
+          {recentOrderId && <p style={{ marginTop: 12, fontSize: 13 }}><a href="/account" style={{ color: "#5e2a49", fontWeight: 700 }}>Sign in to My Orders to track this order</a></p>}
         </section>
 
         <aside style={{

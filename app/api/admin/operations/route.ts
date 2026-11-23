@@ -22,7 +22,9 @@ export async function PATCH(request: NextRequest) {
     if (body.type === "order") {
       const order = (await listOrders()).find(row => row.id === body.id);
       if (!order) return NextResponse.json({ error: "Order not found." }, { status: 404 });
-      order.status = String(body.status || "").slice(0, 50); await saveOrder(order);
+      if (typeof body.status === "string") order.status = body.status.slice(0, 50);
+      if (typeof body.trackingNumber === "string") order.trackingNumber = body.trackingNumber.trim().slice(0, 100);
+      await saveOrder(order);
     } else if (body.type === "return") {
       const item = (await listReturns()).find(row => row.id === body.id);
       if (!item) return NextResponse.json({ error: "Return request not found." }, { status: 404 });
