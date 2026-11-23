@@ -297,7 +297,7 @@ export default function AdminPage() {
           <button type="button" onClick={logout} style={{ border: "1px solid #eee", borderRadius: 8, padding: "0 15px", background: "#fff", cursor: "pointer" }}>LOG OUT</button>
         </nav>
         {activeTab === "products" ? (
-        <div style={{ maxWidth: 1180, margin: "0 auto", display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(360px, 1fr)", gap: 24, alignItems: "start" }}>
+        <div className="admin-products-layout" style={{ maxWidth: 1180, margin: "0 auto", display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(360px, 1fr)", gap: 24, alignItems: "start" }}>
           <section style={{ background: "#fff", padding: 24, borderRadius: 9, boxShadow: "0 8px 30px #0000000d" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 22 }}>
               <div>
@@ -326,7 +326,7 @@ export default function AdminPage() {
                 </div>
                 <div style={{ display: "grid", gap: 8 }}>
                   {variants.map((variant, index) => (
-                    <div key={variant.id || "new-" + index} style={{ display: "grid", gridTemplateColumns: "1.2fr .7fr .8fr .8fr .7fr 34px", gap: 6, alignItems: "center", padding: "8px 0", borderTop: "1px solid #eee" }}>
+                    <div key={variant.id || "new-" + index} className="admin-variant-row" style={{ display: "grid", gridTemplateColumns: "1.2fr .7fr .8fr .8fr .7fr 34px", gap: 6, alignItems: "center", padding: "8px 0", borderTop: "1px solid #eee" }}>
                       <input aria-label={"Color for variant " + (index + 1)} required value={variant.color} onChange={(event) => updateVariant(index, "color", event.target.value)} placeholder="Color" style={inputStyle} />
                       <select aria-label={"Size for variant " + (index + 1)} value={variant.size} onChange={(event) => updateVariant(index, "size", event.target.value)} style={inputStyle}>{sizes.map((size) => <option key={size}>{size}</option>)}</select>
                       <input aria-label={"Stock for variant " + (index + 1)} required type="number" min="0" step="1" value={variant.stock_quantity} onChange={(event) => updateVariant(index, "stock_quantity", event.target.value)} title="Stock" style={inputStyle} />
