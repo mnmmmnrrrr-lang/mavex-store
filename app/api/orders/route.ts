@@ -3,6 +3,28 @@ import { getCatalogProduct } from "../../../lib/catalog-server";
 import { newOperationId, StoreOrder } from "../../../lib/operations-store";
 import { saveOrder, savePaymentProof } from "../../../lib/store-db";
 
+function escapeHtml(value: string) {
+  return value.replace(/[&<>"']/g, character => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character] || character);
+}
+
+async function notifyAdmin(order: StoreOrder) {
+  const apiKey = process.env.RESEND_API_KEY;
+  const adminEmail = process.env.MAVEX_ADMIN_EMAIL;
+  const from = process.env.MAVEX_EMAIL_FROM;
+  if (!apiKey || !adminEmail || !from) return false;
+
+  const itemRows = order.items.map(item => `<li>${escapeHtml(item.name)} — ${escapeHtml(item.color || "")} / ${escapeHtml(item.size)} × ${item.quantity} — EGP ${(item.price * item.quantity).toLocaleString("en-EG")}</li>`).join("");
+  const html = `<h1>New MAVEX order</h1><p><strong>Order:</strong> ${escapeHtml(order.id)}</p><p><strong>Customer:</strong> ${escapeHtml(order.customer.name)}</p><p><strong>Phone:</strong> ${escapeHtml(order.customer.phone)}</p><p><strong>Email:</strong> ${escapeHtml(order.customer.email || "")}</p><p><strong>Address:</strong> ${escapeHtml(`${order.customer.city}, ${order.governorate}, ${order.customer.village}, ${order.customer.street} ${order.customer.building || ""}`)}</p><p><strong>Payment:</strong> ${escapeHtml(order.payment)}</p><ul>${itemRows}</ul><p><strong>Total:</strong> EGP ${order.total.toLocaleString("en-EG")}</p>`;
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json", "Idempotency-Key": `mavex-order-${order.id}` },
+    body: JSON.stringify({ from, to: [adminEmail], subject: `New MAVEX order ${order.id}`, html }),
+    signal: AbortSignal.timeout(8000),
+  });
+  if (!response.ok) throw new Error(`Resend returned ${response.status}`);
+  return true;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -11,6 +33,7 @@ export async function POST(request: NextRequest) {
     if (!customer?.name || !/^01[0125][0-9]{8}$/.test(String(customer.phone || "")) || !body?.governorate || !customer.city || !customer.village || !customer.street || !Array.isArray(incomingItems) || !incomingItems.length || incomingItems.length > 30) {
       return NextResponse.json({ error: "Complete your delivery details and check your phone number." }, { status: 400 });
     }
+    if (typeof customer.email !== "string" || customer.email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customer.email.trim())) return NextResponse.json({ error: "Enter a valid email address." }, { status: 400 });
     const payment = String(body.payment || "cod");
     if (!["cod", "vodafone", "instapay"].includes(payment)) return NextResponse.json({ error: "Choose a valid payment method." }, { status: 400 });
 
@@ -35,7 +58,7 @@ export async function POST(request: NextRequest) {
     const order: StoreOrder = {
       id,
       customer: {
-        name: String(customer.name).trim().slice(0, 120), phone: String(customer.phone), phone2: String(customer.phone2 || "").slice(0, 30),
+        name: String(customer.name).trim().slice(0, 120), phone: String(customer.phone), email: String(customer.email).trim().toLowerCase(), phone2: String(customer.phone2 || "").slice(0, 30),
         city: String(customer.city).trim().slice(0, 120), village: String(customer.village).trim().slice(0, 120), street: String(customer.street).trim().slice(0, 240),
         building: String(customer.building || "").slice(0, 120), notes: String(customer.notes || "").slice(0, 500),
       },
@@ -44,7 +67,14 @@ export async function POST(request: NextRequest) {
       status: payment === "cod" ? "Pending confirmation" : "Awaiting payment review", date: new Date().toISOString(),
     };
     await saveOrder(order);
-    return NextResponse.json({ id: order.id }, { status: 201 });
+    let notificationSent = false;
+    try {
+      notificationSent = await notifyAdmin(order);
+      if (!notificationSent) console.warn("Order saved; admin email notification is not configured.");
+    } catch (error) {
+      console.error("Order saved, but admin email notification failed:", error instanceof Error ? error.message : "Unknown email error");
+    }
+    return NextResponse.json({ id: order.id, notificationSent }, { status: 201 });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Could not save your order. Please try again." }, { status: 503 });
   }

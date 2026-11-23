@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 
 export type StoreOrder = {
-  id: string; customer: { name: string; phone: string; phone2?: string; city: string; village: string; street: string; building?: string; notes?: string };
+  id: string; customer: { name: string; phone: string; email?: string; phone2?: string; city: string; village: string; street: string; building?: string; notes?: string };
   governorate: string; items: { productId?: string; name: string; price: number; size: string; color?: string; quantity: number; image?: string }[];
   subtotal: number; shipping: number; total: number; payment: string; transaction?: string; proof?: string;
   status: string; date: string; trackingNumber?: string;

@@ -41,6 +41,7 @@ export default function CheckoutPage() {
   const [form, setForm] = useState({
     name: "",
     phone: "",
+    email: "",
     phone2: "",
     city: "",
     village: "",
@@ -102,6 +103,8 @@ export default function CheckoutPage() {
     if (!form.name.trim()) nextErrors.name = "Enter your full name.";
     if (!form.phone.trim()) nextErrors.phone = "Enter your mobile number.";
     else if (!/^01[0125][0-9]{8}$/.test(form.phone.trim())) nextErrors.phone = "Enter a valid Egyptian mobile number, such as 01012345678.";
+    if (!form.email.trim()) nextErrors.email = "Enter your email address.";
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) nextErrors.email = "Enter a valid email address.";
     if (!governorate) nextErrors.governorate = "Choose your governorate.";
     if (!form.city.trim()) nextErrors.city = "Enter your city or district.";
     if (!form.village.trim()) nextErrors.village = "Enter your village or area.";
@@ -218,6 +221,14 @@ export default function CheckoutPage() {
             onChange={(e) => updateField("phone", e.target.value)}
             placeholder="01XXXXXXXXX" />
           {fieldErrors.phone && <small style={errorStyle}>{fieldErrors.phone}</small>}
+
+          <label style={{ display: "block", marginTop: 15 }}>
+            Email address *
+          </label>
+          <input style={fieldStyle("email")} type="email" autoComplete="email" value={form.email}
+            onChange={(e) => updateField("email", e.target.value)}
+            placeholder="you@example.com" />
+          {fieldErrors.email && <small style={errorStyle}>{fieldErrors.email}</small>}
 
           <label style={{ display: "block", marginTop: 15 }}>
             Additional phone (optional)
