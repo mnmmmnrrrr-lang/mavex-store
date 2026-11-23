@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ADMIN_COOKIE, isAdminSessionValid } from "../../../../lib/admin-auth";
-import { listComments, listOrders, listReturns, removeComment, saveComment, saveOrder, saveReturn, getPaymentProofLink } from "../../../../lib/store-db";
+import { listComments, listOrders, listReturns, removeComment, removeOrder, saveComment, saveOrder, saveReturn, getPaymentProofLink } from "../../../../lib/store-db";
 
 function authorized(request: NextRequest) { return isAdminSessionValid(request.cookies.get(ADMIN_COOKIE)?.value); }
 
@@ -42,5 +42,20 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ ok: true });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Could not update this item." }, { status: 503 });
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  if (!authorized(request)) return NextResponse.json({ error: "Please log in." }, { status: 401 });
+  try {
+    const body = await request.json();
+    const id = typeof body.id === "string" ? body.id.trim() : "";
+    if (!id || id.length > 100) return NextResponse.json({ error: "Enter a valid order number." }, { status: 400 });
+    const order = (await listOrders()).find((row) => row.id === id);
+    if (!order) return NextResponse.json({ error: "Order not found." }, { status: 404 });
+    await removeOrder(id);
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Could not delete this order." }, { status: 503 });
   }
 }

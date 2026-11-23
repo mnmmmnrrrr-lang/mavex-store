@@ -292,6 +292,27 @@ export default function AdminPage() {
     await loadOperations();
   }
 
+  async function deleteOrder(order: OperationsData["orders"][number]) {
+    if (!window.confirm(`Permanently delete order ${order.id}? This cannot be undone.`)) return;
+    setBusy(true);
+    setMessage("");
+    try {
+      const response = await fetch("/api/admin/operations", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: order.id }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Could not delete this order.");
+      setOperations((current) => ({ ...current, orders: current.orders.filter((item) => item.id !== order.id) }));
+      setMessage(`Order ${order.id} deleted.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Could not delete this order.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const labelStyle = { display: "block", marginBottom: 7, fontSize: 12, fontWeight: 700 };
   const productSizes = [...new Set(variants.map((variant) => variant.size))];
 
@@ -480,6 +501,9 @@ export default function AdminPage() {
                     <label style={{ display: "block", marginTop: 14, fontSize: 12 }}>Courier tracking number
                       <input defaultValue={order.trackingNumber || ""} onBlur={(e) => { const trackingNumber = e.currentTarget.value.trim(); if (trackingNumber !== (order.trackingNumber || "")) void updateOperation("order", order.id, { trackingNumber }); }} placeholder="Enter courier tracking number" style={{ ...inputStyle, maxWidth: 360, marginTop: 6 }} />
                     </label>
+                    <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 14 }}>
+                      <button type="button" disabled={busy} onClick={() => void deleteOrder(order)} style={{ border: "1px solid #efcaca", borderRadius: 6, background: "#fff", color: "#a22", padding: "10px 14px", fontWeight: 700, cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.6 : 1 }}>DELETE ORDER</button>
+                    </div>
                   </article>
                 );
               })}

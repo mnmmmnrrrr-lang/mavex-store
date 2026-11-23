@@ -41,6 +41,15 @@ async function saveRow<T extends { id: string }>(table: string, value: T) {
 export const listOrders = () => listRows<StoreOrder>("mavex_orders");
 export const saveOrder = (value: StoreOrder) => saveRow("mavex_orders", value);
 export const getOrder = async (id: string) => (await listRows<StoreOrder>("mavex_orders")).find(order => order.id === id) || null;
+export async function removeOrder(id: string) {
+  const order = await getOrder(id);
+  const { error } = await getSupabaseAdmin().from("mavex_orders").delete().eq("id", id);
+  if (error) throw new Error(`Could not delete order: ${error.message}`);
+  if (order?.proof) {
+    const { error: proofError } = await getSupabaseAdmin().storage.from("mavex-payment-proofs").remove([order.proof]);
+    if (proofError) console.error("Could not remove payment proof for deleted order:", proofError.message);
+  }
+}
 export const listReturns = () => listRows<ReturnRequest>("mavex_returns");
 export const saveReturn = (value: ReturnRequest) => saveRow("mavex_returns", value);
 export const listComments = () => listRows<ProductComment>("mavex_product_comments");
