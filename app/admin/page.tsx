@@ -24,7 +24,7 @@ type AdminProduct = {
   product_variants: { id: string; color: string; size: string; stock_quantity: number; price_override: number | null; is_active: boolean | null }[];
 };
 type OperationsData = {
-  orders: { id: string; customer: { name: string; phone: string; email?: string; phone2?: string; city: string; village: string; street: string; building?: string; notes?: string }; governorate: string; items: { name: string; size: string; color?: string; quantity: number; price: number }[]; subtotal: number; shipping: number; total: number; payment: string; transaction?: string; proof?: string; status: string; date: string; trackingNumber?: string }[];
+  orders: { id: string; customer: { name: string; phone: string; email?: string; phone2?: string; city: string; village: string; street: string; building?: string; notes?: string }; governorate: string; items: { name: string; size: string; color?: string; quantity: number; price: number; image?: string }[]; subtotal: number; shipping: number; total: number; payment: string; transaction?: string; proof?: string; status: string; date: string; trackingNumber?: string }[];
   returns: { id: string; orderId: string; customerName: string; email?: string; phone?: string; issue: string; date: string; status: string }[];
   comments: { id: string; productId: string; productName: string; name: string; rating: number; message: string; date: string; status: string; reply?: string }[];
 };
@@ -385,7 +385,75 @@ export default function AdminPage() {
           </aside>
         </div>
         ) : <div style={{ maxWidth: 1180, margin: "0 auto", display: "grid", gap: 16 }}>
-          {activeTab === "orders" && <section style={{ background: "#fff", padding: 22, borderRadius: 12 }}><h1 style={{ marginBottom: 18 }}>Orders <small style={{ color: "#888", fontSize: 14 }}>({operations.orders.length})</small></h1>{operations.orders.length === 0 ? <p>No orders yet.</p> : operations.orders.map(order => <article key={order.id} style={{ border: "1px solid #eee", borderRadius: 10, padding: 18, marginTop: 12 }}><div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}><div><strong>{order.id} · {order.customer.name}</strong><p style={{ marginTop: 6, color: "#666" }}>{order.customer.phone} · {order.customer.email || "No email provided"} · {order.governorate} · {order.customer.city}</p><p style={{ marginTop: 5, fontSize: 12, color: "#777" }}>{new Date(order.date).toLocaleString("en-EG")} · {order.payment}</p></div><select aria-label={`Status for ${order.id}`} value={order.status} onChange={e => void updateOperation("order", order.id, { status: e.target.value })} style={{ ...inputStyle, width: 210, alignSelf: "start" }}>{["Pending confirmation", "Awaiting payment review", "Confirmed", "Processing", "Shipped", "Delivered", "Cancelled"].map(s => <option key={s}>{s}</option>)}</select></div><div style={{ background: "#f8f8f8", borderRadius: 7, padding: 12, marginTop: 12 }}>{order.items.map((item, i) => <p key={i} style={{ fontSize: 13, padding: 3 }}>{item.name} · {item.color} / {item.size} × {item.quantity} · EGP {(item.price * item.quantity).toLocaleString("en-EG")}</p>)}<strong style={{ display: "block", marginTop: 8 }}>Total: EGP {order.total.toLocaleString("en-EG")}</strong></div><label style={{ display: "block", marginTop: 12, fontSize: 12 }}>Courier tracking number<input defaultValue={order.trackingNumber || ""} onBlur={(e) => { const trackingNumber = e.currentTarget.value.trim(); if (trackingNumber !== (order.trackingNumber || "")) void updateOperation("order", order.id, { trackingNumber }); }} placeholder="Enter courier tracking number" style={{ ...inputStyle, maxWidth: 360, marginTop: 6 }} /></label><p style={{ marginTop: 10, fontSize: 12, color: "#555" }}>Address: {order.customer.village}, {order.customer.street} {order.customer.building || ""} {order.customer.notes ? `· ${order.customer.notes}` : ""} {order.transaction ? `· Transfer reference: ${order.transaction}` : ""}</p>{order.proof && <a href={order.proof} target="_blank" rel="noreferrer" style={{ display: "inline-block", marginTop: 8, color: "#774061" }}>View payment proof</a>}</article>)}</section>}
+          {activeTab === "orders" && (
+            <section style={{ background: "#fff", padding: 22, borderRadius: 12 }}>
+              <h1 style={{ marginBottom: 18 }}>Orders <small style={{ color: "#888", fontSize: 14 }}>({operations.orders.length})</small></h1>
+              {operations.orders.length === 0 ? <p>No orders yet.</p> : operations.orders.map((order) => {
+                const paymentName = order.payment === "instapay" ? "InstaPay" : order.payment === "vodafone" ? "Vodafone Cash" : "Cash on delivery";
+                const isTransfer = order.payment === "instapay" || order.payment === "vodafone";
+                return (
+                  <article key={order.id} style={{ border: "1px solid #eee", borderRadius: 10, padding: 18, marginTop: 12 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                      <div>
+                        <strong>{order.id} · {order.customer.name}</strong>
+                        <p style={{ marginTop: 6, color: "#666" }}>{new Date(order.date).toLocaleString("en-EG")}</p>
+                      </div>
+                      <label style={{ display: "grid", gap: 5, fontSize: 12, minWidth: 210 }}>Order status
+                        <select aria-label={`Status for ${order.id}`} value={order.status} onChange={e => void updateOperation("order", order.id, { status: e.target.value })} style={inputStyle}>
+                          {["Pending confirmation", "Awaiting payment review", "Confirmed", "Processing", "Shipped", "Delivered", "Cancelled"].map(s => <option key={s}>{s}</option>)}
+                        </select>
+                      </label>
+                    </div>
+
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12, marginTop: 16 }}>
+                      <div style={{ background: "#fafafa", borderRadius: 8, padding: 14 }}>
+                        <strong>Customer details</strong>
+                        <p style={{ marginTop: 8, fontSize: 13, lineHeight: 1.8 }}>Name: {order.customer.name}<br />Phone: {order.customer.phone}<br />{order.customer.phone2 ? <>Second phone: {order.customer.phone2}<br /></> : null}Email: {order.customer.email || "Not provided"}</p>
+                      </div>
+                      <div style={{ background: "#fafafa", borderRadius: 8, padding: 14 }}>
+                        <strong>Delivery address</strong>
+                        <p style={{ marginTop: 8, fontSize: 13, lineHeight: 1.8 }}>Governorate: {order.governorate}<br />City: {order.customer.city}<br />Village/area: {order.customer.village}<br />Street: {order.customer.street}<br />Building: {order.customer.building || "Not provided"}</p>
+                        {order.customer.notes && <p style={{ marginTop: 8, fontSize: 13, lineHeight: 1.6 }}>Customer notes: {order.customer.notes}</p>}
+                      </div>
+                    </div>
+
+                    <div style={{ background: "#f8f8f8", borderRadius: 8, padding: 14, marginTop: 12 }}>
+                      <strong>Items ({order.items.length})</strong>
+                      <div style={{ display: "grid", gap: 9, marginTop: 10 }}>
+                        {order.items.map((item, index) => (
+                          <div key={`${order.id}-${index}`} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderTop: "1px solid #e8e8e8" }}>
+                            {item.image && <img src={item.image} alt={item.name} style={{ width: 54, height: 64, objectFit: "cover", borderRadius: 4, background: "#eee" }} />}
+                            <p style={{ fontSize: 13, lineHeight: 1.7 }}>{item.name}<br />Color: {item.color || "—"} · Size: {item.size} · Quantity: {item.quantity}<br />Unit price: EGP {item.price.toLocaleString("en-EG")} · Line total: EGP {(item.price * item.quantity).toLocaleString("en-EG")}</p>
+                          </div>
+                        ))}
+                      </div>
+                      <div style={{ display: "grid", gap: 5, maxWidth: 320, margin: "14px 0 0 auto", fontSize: 13 }}>
+                        <p style={{ display: "flex", justifyContent: "space-between" }}><span>Subtotal</span><span>EGP {order.subtotal.toLocaleString("en-EG")}</span></p>
+                        <p style={{ display: "flex", justifyContent: "space-between" }}><span>Shipping</span><span>EGP {order.shipping.toLocaleString("en-EG")}</span></p>
+                        <strong style={{ display: "flex", justifyContent: "space-between", borderTop: "1px solid #ddd", paddingTop: 8 }}><span>Total</span><span>EGP {order.total.toLocaleString("en-EG")}</span></strong>
+                      </div>
+                    </div>
+
+                    <div style={{ background: "#fff7fb", border: "1px solid #f4c6df", borderRadius: 8, padding: 14, marginTop: 12 }}>
+                      <strong>Payment: {paymentName}</strong>
+                      {isTransfer && <p style={{ marginTop: 7, fontSize: 13 }}>Transfer reference: {order.transaction || "Not provided"}</p>}
+                      {isTransfer && order.proof && (
+                        <a href={order.proof} target="_blank" rel="noreferrer" style={{ display: "block", width: "fit-content", maxWidth: "100%", marginTop: 10 }}>
+                          <img src={order.proof} alt={`${paymentName} payment proof for ${order.id}`} style={{ display: "block", width: "min(100%, 480px)", maxHeight: 640, objectFit: "contain", border: "1px solid #ddd", borderRadius: 6, background: "#fff" }} />
+                          <span style={{ display: "block", marginTop: 6, color: "#774061", fontSize: 12 }}>Open full-size payment proof</span>
+                        </a>
+                      )}
+                      {isTransfer && !order.proof && <p style={{ marginTop: 7, color: "#b42318", fontSize: 13 }}>No payment image was uploaded.</p>}
+                    </div>
+
+                    <label style={{ display: "block", marginTop: 14, fontSize: 12 }}>Courier tracking number
+                      <input defaultValue={order.trackingNumber || ""} onBlur={(e) => { const trackingNumber = e.currentTarget.value.trim(); if (trackingNumber !== (order.trackingNumber || "")) void updateOperation("order", order.id, { trackingNumber }); }} placeholder="Enter courier tracking number" style={{ ...inputStyle, maxWidth: 360, marginTop: 6 }} />
+                    </label>
+                  </article>
+                );
+              })}
+            </section>
+          )}
           {activeTab === "returns" && <section style={{ background: "#fff", padding: 22, borderRadius: 12 }}><h1 style={{ marginBottom: 18 }}>Return Requests <small style={{ color: "#888", fontSize: 14 }}>({operations.returns.length})</small></h1><p style={{ marginBottom: 16, color: "#666" }}>Customer form: <Link href="/returns" style={{ color: "#7d3760" }}>/returns</Link></p>{operations.returns.length === 0 ? <p>No return requests yet.</p> : operations.returns.map(item => <article key={item.id} style={{ border: "1px solid #eee", borderRadius: 10, padding: 18, marginTop: 12 }}><div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}><strong>{item.id} · Order {item.orderId}</strong><select aria-label={`Status for ${item.id}`} value={item.status} onChange={e => void updateOperation("return", item.id, { status: e.target.value })} style={{ ...inputStyle, width: 190 }}>{["New", "Reviewing", "Approved", "Rejected", "Resolved"].map(s => <option key={s}>{s}</option>)}</select></div><p style={{ marginTop: 8 }}>{item.customerName} · {item.email || item.phone || "No contact email"} · {new Date(item.date).toLocaleString("en-EG")}</p><p style={{ marginTop: 12, background: "#fff7fb", padding: 13, borderRadius: 7, lineHeight: 1.7 }}>{item.issue}</p></article>)}</section>}
           {activeTab === "comments" && <section style={{ background: "#fff", padding: 22, borderRadius: 12 }}><h1 style={{ marginBottom: 18 }}>Product Comments <small style={{ color: "#888", fontSize: 14 }}>({operations.comments.length})</small></h1>{operations.comments.length === 0 ? <p>No comments yet.</p> : operations.comments.map(item => <article key={item.id} style={{ border: "1px solid #eee", borderRadius: 10, padding: 18, marginTop: 12 }}><div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}><div><strong>{item.productName}</strong><p style={{ marginTop: 5 }}>{item.name} · <span style={{ color: "#ca7b00" }}>{"★".repeat(item.rating)}{"☆".repeat(5-item.rating)}</span> · {new Date(item.date).toLocaleString("en-EG")}</p></div><span style={{ fontSize: 12, color: item.status === "pending" ? "#b56b00" : "#777" }}>{item.status}</span></div><p style={{ margin: "12px 0", lineHeight: 1.7 }}>{item.message}</p>{item.reply && <p style={{ color: "#555", fontSize: 12 }}>Admin reply: {item.reply}</p>}<div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}><button type="button" onClick={() => void updateOperation("comment", item.id, { status: item.status === "published" ? "hidden" : "published" })} style={{ border: 0, borderRadius: 6, background: "#17213c", color: "#fff", padding: "9px 13px", cursor: "pointer" }}>{item.status === "published" ? "Hide" : "Publish comment"}</button><button type="button" onClick={() => { const reply = window.prompt("Reply to this comment", item.reply || ""); if (reply !== null) void updateOperation("comment", item.id, { status: item.status === "published" ? "published" : "hidden", reply }); }} style={{ border: "1px solid #ddd", background: "#fff", borderRadius: 6, padding: "9px 13px", cursor: "pointer" }}>Reply</button><button type="button" onClick={() => { if (window.confirm("Permanently delete this comment?")) void updateOperation("comment", item.id, { action: "delete" }); }} style={{ border: "1px solid #efcaca", color: "#a22", background: "#fff", borderRadius: 6, padding: "9px 13px", cursor: "pointer" }}>Delete</button></div></article>)}</section>}
         </div>}
