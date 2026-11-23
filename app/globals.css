@@ -149,6 +149,10 @@ button {
   text-decoration: none;
 }
 
+.product-card a.add-button {
+  color: #fff;
+}
+
 .product-image {
   width: 100%;
   aspect-ratio: 3 / 4;
@@ -282,6 +286,11 @@ footer small {
 
 .add-button:active {
   opacity: .8;
+}
+
+.add-button:disabled {
+  opacity: .55;
+  cursor: not-allowed;
 }
 
 @media (max-width: 700px) {

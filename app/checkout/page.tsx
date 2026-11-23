@@ -86,7 +86,7 @@ export default function CheckoutPage() {
     reader.readAsDataURL(file);
   }
 
-  function submitOrder() {
+  async function submitOrder() {
     if (cart.length === 0) {
       setMessage("Your shopping bag is empty.");
       return;
@@ -115,34 +115,24 @@ export default function CheckoutPage() {
     }
 
     const order = {
-      id: "MAVEX-" + Date.now(),
       customer: form,
       governorate,
       items: cart,
-      subtotal,
-      shipping,
-      total,
       payment,
       transaction,
       proof,
-      status: payment === "cod" ? "Pending confirmation" : "Awaiting payment review",
-      date: new Date().toISOString(),
     };
 
     try {
-      const oldOrders = JSON.parse(
-        localStorage.getItem("mavex-orders") || "[]"
-      );
-
-      oldOrders.push(order);
-
-      localStorage.setItem("mavex-orders", JSON.stringify(oldOrders));
+      const response = await fetch("/api/orders", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(order) });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Could not save your order.");
       localStorage.removeItem("mavex-cart");
 
       setCart([]);
-      setMessage("Your demo order was saved successfully. Order: " + order.id);
-    } catch {
-      setMessage("Storage is full. Please use a smaller payment image.");
+      setMessage("Your order was received successfully. Order: " + result.id);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Could not save your order.");
     }
   }
 
@@ -457,6 +447,7 @@ export default function CheckoutPage() {
         <p style={{ fontSize: 11, color: "#777", marginTop: 10 }}>
           STREET CULTURE. OWN YOUR STYLE.
         </p>
+        <a href="/returns" style={{ display: "inline-block", marginTop: 12, color: "#555", fontSize: 12 }}>RETURNS &amp; EXCHANGES</a>
       </footer>
 
       <style jsx>{`

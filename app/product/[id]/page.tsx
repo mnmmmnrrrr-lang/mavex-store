@@ -1,8 +1,8 @@
-
 "use client";
 
+import { Suspense, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 
 type Variant = {
@@ -17,10 +17,10 @@ type Variant = {
 type Product = {
   id: string;
   name: string;
-  slug: string;
   description: string | null;
   price: number;
   compare_at_price: number | null;
+  size_guide?: { size: string; width: number; length: number }[];
   product_images: {
     image_url: string;
     alt_text: string | null;
@@ -29,9 +29,21 @@ type Product = {
   product_variants: Variant[];
 };
 
+type CartItem = {
+  productId: string;
+  name: string;
+  price: number;
+  size: string;
+  color: string;
+  quantity: number;
+  image: string;
+};
+type ProductComment = { id: string; name: string; rating: number; message: string; date: string; reply?: string };
+
 const colorCodes: Record<string, string> = {
   Black: "#111111",
   White: "#f5f5f5",
+  Navy: "#1a2542",
   Pink: "#F890C8",
   Grey: "#999999",
   Gray: "#999999",
@@ -40,9 +52,18 @@ const colorCodes: Record<string, string> = {
   Beige: "#d8c3a5",
   Green: "#39734b",
   Brown: "#795548",
+  Burgundy: "#6b1632",
 };
 
-export default function ProductPage() {
+const sizeGuide = [
+  { size: "S", width: "104", length: "68" },
+  { size: "M", width: "108", length: "70" },
+  { size: "L", width: "112", length: "72" },
+  { size: "XL", width: "116", length: "74" },
+  { size: "XXL", width: "120", length: "76" },
+];
+
+function ProductContent() {
   const params = useParams();
   const productId = String(params.id);
 
@@ -52,92 +73,128 @@ export default function ProductPage() {
 
   const [color, setColor] = useState("");
   const [size, setSize] = useState("");
+  const [quantity, setQuantity] = useState(1);
   const [imageIndex, setImageIndex] = useState(0);
   const [message, setMessage] = useState("");
+  const [touchStartX, setTouchStartX] = useState<number | null>(null);
+  const [showSizeGuide, setShowSizeGuide] = useState(false);
+  const [tab, setTab] = useState<"description" | "details" | "shipping">(
+    "description"
+  );
+  const [comments, setComments] = useState<ProductComment[]>([]);
+  const [commentName, setCommentName] = useState("");
+  const [commentText, setCommentText] = useState("");
+  const [commentRating, setCommentRating] = useState(5);
+  const [commentNotice, setCommentNotice] = useState("");
+  const [commentBusy, setCommentBusy] = useState(false);
 
   useEffect(() => {
+    let cancelled = false;
+
     async function loadProduct() {
       setLoading(true);
       setError("");
 
-      const uuidPattern =
-        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      try {
+        const response = await fetch('/api/catalog/' + encodeURIComponent(productId), { cache: 'no-store' });
+        let item: Product | null = response.ok ? await response.json() as Product : null;
 
-      let query = supabase
-        .from("products")
-        .select(`
-          id,
-          name,
-          slug,
-          description,
-          price,
-          compare_at_price,
-          product_images (
-            image_url,
-            alt_text,
-            sort_order
-          ),
-          product_variants (
-            id,
-            color,
-            size,
-            stock_quantity,
-            price_override,
-            is_active
-          )
-        `)
-        .eq("status", "active");
+        if (!item) {
+          const stateResponse = await fetch('/api/catalog/state', { cache: 'no-store' });
+          const state = stateResponse.ok ? await stateResponse.json() as { deletedIds: string[]; overrides: Record<string, Product> } : { deletedIds: [], overrides: {} };
+          if (state.deletedIds.includes(productId)) {
+            setError('Product not found.');
+            setLoading(false);
+            return;
+          }
 
-      if (uuidPattern.test(productId)) {
-        query = query.eq("id", productId);
-      } else {
-        query = query.eq("slug", productId);
-      }
+          const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+          let query = supabase.from('products').select('id, name, slug, description, price, compare_at_price, product_images(image_url, alt_text, sort_order), product_variants(id, color, size, stock_quantity, price_override, is_active)').eq('status', 'active');
+          query = uuidPattern.test(productId) ? query.eq('id', productId) : query.eq('slug', productId);
+          const { data, error: queryError } = await query.maybeSingle();
+          if (queryError) {
+            setError('Could not load this product. Please try again.');
+            setLoading(false);
+            return;
+          }
+          if (data) {
+            const databaseProduct = data as unknown as Product;
+            item = state.overrides?.[databaseProduct.id] ? { ...databaseProduct, ...state.overrides[databaseProduct.id] } : databaseProduct;
+          }
+        }
 
-      const { data, error } = await query.maybeSingle();
+        if (!item) {
+          setError('Product not found.');
+          setLoading(false);
+          return;
+        }
 
-      if (error) {
-        console.error(error);
+        if (cancelled) return;
+        item.product_images = [...(item.product_images || [])].sort(
+          (a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)
+        );
+        item.product_variants = (item.product_variants || []).filter(
+          (variant) => variant.is_active !== false
+        );
+        setProduct(item);
+        const firstColor =
+          [...new Set(
+            item.product_variants
+              .filter((variant) => variant.stock_quantity > 0)
+              .map((variant) => variant.color)
+          )][0] || item.product_variants[0]?.color || '';
+        setColor(firstColor);
+        setSize('');
+        setLoading(false);
+      } catch (err) {
+        if (cancelled) return;
+        console.error("Unexpected error while loading product:", err);
         setError("Could not load this product. Please try again.");
         setLoading(false);
-        return;
       }
-
-      if (!data) {
-        setError("Product not found.");
-        setLoading(false);
-        return;
-      }
-
-      const item = data as unknown as Product;
-
-      item.product_images = [...(item.product_images || [])].sort(
-        (a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)
-      );
-
-      item.product_variants = (item.product_variants || []).filter(
-        (v) => v.is_active !== false
-      );
-
-      setProduct(item);
-
-      const firstColor = [
-        ...new Set(item.product_variants.map((v) => v.color)),
-      ][0] || "";
-
-      setColor(firstColor);
-
-      const firstSize =
-        item.product_variants.find(
-          (v) => v.color === firstColor && v.stock_quantity > 0
-        )?.size || "";
-
-      setSize(firstSize);
-      setLoading(false);
     }
 
     loadProduct();
+
+    return () => {
+      cancelled = true;
+    };
   }, [productId]);
+
+  useEffect(() => {
+    if (!product) return;
+    fetch("/api/products/" + encodeURIComponent(product.id) + "/comments", { cache: "no-store" })
+      .then(response => response.ok ? response.json() as Promise<ProductComment[]> : [])
+      .then(setComments).catch(() => setComments([]));
+  }, [product]);
+
+  async function submitComment(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setCommentBusy(true); setCommentNotice("");
+    try {
+      const response = await fetch("/api/products/" + encodeURIComponent(productId) + "/comments", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: commentName, message: commentText, rating: commentRating }) });
+      const result = await response.json(); if (!response.ok) throw new Error(result.error);
+      setCommentNotice("Thank you! Your comment was sent to the team for review."); setCommentName(""); setCommentText("");
+    } catch (error) { setCommentNotice(error instanceof Error ? error.message : "Could not submit your comment."); }
+    finally { setCommentBusy(false); }
+  }
+
+  const imageCount = product?.product_images.length ?? 0;
+
+  // Keyboard arrows to flip between images
+  useEffect(() => {
+    if (imageCount < 2) return;
+
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "ArrowRight") {
+        setImageIndex((c) => (c + 1) % imageCount);
+      } else if (e.key === "ArrowLeft") {
+        setImageIndex((c) => (c - 1 + imageCount) % imageCount);
+      }
+    }
+
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [imageCount]);
 
   if (loading) {
     return (
@@ -151,59 +208,84 @@ export default function ProductPage() {
     return (
       <main style={{ padding: 40, textAlign: "center" }}>
         <h2>{error || "Product not found."}</h2>
-        <a href="/">BACK TO MAVEX</a>
+        <Link href="/">BACK TO MAVEX</Link>
       </main>
     );
   }
 
   const variants = product.product_variants;
+  const measurements = product.size_guide?.length ? product.size_guide : sizeGuide;
   const colors = [...new Set(variants.map((v) => v.color))];
 
   const sizes = [
-    ...new Set(
-      variants.filter((v) => v.color === color).map((v) => v.size)
-    ),
+    ...new Set(variants.filter((v) => v.color === color).map((v) => v.size)),
   ];
 
   const selectedVariant = variants.find(
     (v) => v.color === color && v.size === size
   );
 
-  const available = (selectedVariant?.stock_quantity ?? 0) > 0;
+  const stock = selectedVariant?.stock_quantity ?? 0;
+  const available = stock > 0;
+  const hasAvailableSizes = variants.some(
+    (v) => v.color === color && v.stock_quantity > 0
+  );
+  const maxQty = Math.max(1, Math.min(stock, 10));
 
   const images = product.product_images.map((img) => img.image_url);
 
-  const currentPrice =
-    selectedVariant?.price_override ?? product.price;
+  const currentPrice = Number(selectedVariant?.price_override ?? product.price);
+
+  function goPrev() {
+    setImageIndex((c) => (c - 1 + images.length) % images.length);
+  }
+
+  function goNext() {
+    setImageIndex((c) => (c + 1) % images.length);
+  }
 
   function changeColor(newColor: string) {
     setColor(newColor);
+    setSize("");
+    setQuantity(1);
+    setMessage("");
+  }
 
-    const firstAvailable = variants.find(
-      (v) => v.color === newColor && v.stock_quantity > 0
-    );
-
-    setSize(firstAvailable?.size || "");
-    setImageIndex(0);
+  function changeSize(newSize: string) {
+    setSize(newSize);
+    setQuantity(1);
     setMessage("");
   }
 
   function addToCart() {
-    if (!product || !available || !selectedVariant) return;
+    if (!product) return;
+    if (!size) {
+      setMessage("PLEASE SELECT A SIZE.");
+      return;
+    }
+    if (!available || !selectedVariant) {
+      setMessage("THIS SIZE IS SOLD OUT.");
+      return;
+    }
 
-    const cart = JSON.parse(
-      localStorage.getItem("mavex-cart") || "[]"
-    );
+    let cart: CartItem[] = [];
+
+    try {
+      const saved = JSON.parse(localStorage.getItem("mavex-cart") || "[]");
+      cart = Array.isArray(saved) ? saved : [];
+    } catch {
+      cart = [];
+    }
 
     const existing = cart.find(
-      (item: any) =>
+      (item) =>
         item.productId === product.id &&
         item.size === size &&
         item.color === color
     );
 
     if (existing) {
-      existing.quantity += 1;
+      existing.quantity = Math.min(existing.quantity + quantity, stock);
     } else {
       cart.push({
         productId: product.id,
@@ -211,7 +293,7 @@ export default function ProductPage() {
         price: currentPrice,
         size,
         color,
-        quantity: 1,
+        quantity,
         image: images[0] || "",
       });
     }
@@ -219,6 +301,39 @@ export default function ProductPage() {
     localStorage.setItem("mavex-cart", JSON.stringify(cart));
     setMessage("ADDED TO YOUR BAG ✓");
   }
+
+  const arrowStyle: React.CSSProperties = {
+    position: "absolute",
+    top: "50%",
+    transform: "translateY(-50%)",
+    width: 40,
+    height: 40,
+    borderRadius: "50%",
+    border: 0,
+    background: "rgba(255,255,255,0.85)",
+    color: "#111",
+    fontSize: 22,
+    cursor: "pointer",
+    display: "grid",
+    placeItems: "center",
+    lineHeight: 1,
+  };
+
+  const tabButton = (
+    key: "description" | "details" | "shipping",
+    label: string
+  ): React.CSSProperties => ({
+    flex: 1,
+    padding: "12px 4px",
+    background: "none",
+    border: 0,
+    borderBottom: tab === key ? "2px solid #111" : "1px solid #ddd",
+    fontWeight: tab === key ? "bold" : "normal",
+    fontSize: 12,
+    letterSpacing: 1,
+    cursor: "pointer",
+    color: "#111",
+  });
 
   return (
     <main
@@ -230,7 +345,7 @@ export default function ProductPage() {
         fontFamily: "Arial, sans-serif",
       }}
     >
-      <a
+      <Link
         href="/"
         style={{
           color: "#111",
@@ -240,7 +355,7 @@ export default function ProductPage() {
         }}
       >
         ← MAVEX / SHOP
-      </a>
+      </Link>
 
       <div
         className="product-layout"
@@ -254,22 +369,20 @@ export default function ProductPage() {
       >
         <section>
           <div
-            onTouchStart={(e) => {
-              (window as any).touchStartX = e.touches[0].clientX;
-            }}
+            onTouchStart={(e) => setTouchStartX(e.touches[0].clientX)}
             onTouchEnd={(e) => {
-              const start = (window as any).touchStartX;
-              const difference = e.changedTouches[0].clientX - start;
+              if (touchStartX === null) return;
+
+              const difference = e.changedTouches[0].clientX - touchStartX;
+              setTouchStartX(null);
 
               if (Math.abs(difference) > 45 && images.length > 1) {
-                setImageIndex((current) =>
-                  difference < 0
-                    ? (current + 1) % images.length
-                    : (current - 1 + images.length) % images.length
-                );
+                if (difference < 0) goNext();
+                else goPrev();
               }
             }}
             style={{
+              position: "relative",
               width: "100%",
               aspectRatio: "4 / 5",
               background: "#f5f5f5",
@@ -298,45 +411,80 @@ export default function ProductPage() {
                 MAVEX
               </div>
             )}
+
+            {images.length > 1 && (
+              <>
+                <button
+                  aria-label="Previous image"
+                  onClick={goPrev}
+                  style={{ ...arrowStyle, left: 10 }}
+                >
+                  ‹
+                </button>
+                <button
+                  aria-label="Next image"
+                  onClick={goNext}
+                  style={{ ...arrowStyle, right: 10 }}
+                >
+                  ›
+                </button>
+                <span
+                  style={{
+                    position: "absolute",
+                    bottom: 10,
+                    right: 10,
+                    background: "rgba(0,0,0,0.65)",
+                    color: "#fff",
+                    fontSize: 12,
+                    padding: "4px 9px",
+                    letterSpacing: 1,
+                  }}
+                >
+                  {imageIndex + 1} / {images.length}
+                </span>
+              </>
+            )}
           </div>
 
-          <div
-            style={{
-              display: "flex",
-              gap: 9,
-              overflowX: "auto",
-              marginTop: 12,
-            }}
-          >
-            {images.map((image, index) => (
-              <button
-                key={index}
-                onClick={() => setImageIndex(index)}
-                style={{
-                  border:
-                    imageIndex === index
-                      ? "2px solid #F890C8"
-                      : "1px solid #ddd",
-                  padding: 0,
-                  minWidth: 65,
-                  width: 65,
-                  height: 80,
-                  background: "#fff",
-                  cursor: "pointer",
-                }}
-              >
-                <img
-                  src={image}
-                  alt={`Product view ${index + 1}`}
+          {images.length > 1 && (
+            <div
+              style={{
+                display: "flex",
+                gap: 9,
+                overflowX: "auto",
+                marginTop: 12,
+              }}
+            >
+              {images.map((image, index) => (
+                <button
+                  key={index}
+                  onClick={() => setImageIndex(index)}
                   style={{
-                    width: "100%",
-                    height: "100%",
-                    objectFit: "cover",
+                    border:
+                      imageIndex === index
+                        ? "2px solid #F890C8"
+                        : "1px solid #ddd",
+                    padding: 0,
+                    minWidth: 65,
+                    width: 65,
+                    height: 80,
+                    background: "#fff",
+                    cursor: "pointer",
                   }}
-                />
-              </button>
-            ))}
-          </div>
+                >
+                  <img
+                    src={image}
+                    alt={`Product view ${index + 1}`}
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      objectFit: "cover",
+                    }}
+                  />
+                </button>
+              ))}
+            </div>
+          )}
         </section>
 
         <section>
@@ -344,30 +492,27 @@ export default function ProductPage() {
             MAVEX® / STREETWEAR
           </p>
 
-          <h1 style={{ fontSize: 27, lineHeight: 1.2 }}>
-            {product.name}
-          </h1>
+          <h1 style={{ fontSize: 27, lineHeight: 1.2 }}>{product.name}</h1>
 
-          <p style={{ fontSize: 22, fontWeight: "bold" }}>
-            EGP {Number(currentPrice).toLocaleString("en-EG")}
-          </p>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
+            <p style={{ fontSize: 22, fontWeight: "bold", margin: 0 }}>
+              EGP {currentPrice.toLocaleString("en-EG")}
+            </p>
 
-          {product.compare_at_price &&
-            product.compare_at_price > currentPrice && (
-              <p
-                style={{
-                  color: "#999",
-                  textDecoration: "line-through",
-                  fontSize: 15,
-                }}
-              >
-                EGP {Number(product.compare_at_price).toLocaleString("en-EG")}
-              </p>
-            )}
-
-          <p style={{ color: "#666", lineHeight: 1.7, fontSize: 14 }}>
-            {product.description}
-          </p>
+            {product.compare_at_price &&
+              product.compare_at_price > currentPrice && (
+                <p
+                  style={{
+                    color: "#999",
+                    textDecoration: "line-through",
+                    fontSize: 15,
+                    margin: 0,
+                  }}
+                >
+                  EGP {Number(product.compare_at_price).toLocaleString("en-EG")}
+                </p>
+              )}
+          </div>
 
           <hr
             style={{
@@ -401,9 +546,7 @@ export default function ProductPage() {
                   borderRadius: "50%",
                   background: colorCodes[item] || "#ccc",
                   border:
-                    color === item
-                      ? "3px solid #F890C8"
-                      : "1px solid #ccc",
+                    color === item ? "3px solid #F890C8" : "1px solid #ccc",
                   outline: color === item ? "1px solid #111" : "none",
                   cursor: "pointer",
                 }}
@@ -411,9 +554,30 @@ export default function ProductPage() {
             ))}
           </div>
 
-          <p style={{ fontSize: 13, fontWeight: "bold" }}>
-            SELECT SIZE
-          </p>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+            }}
+          >
+            <p style={{ fontSize: 13, fontWeight: "bold", margin: 0 }}>
+              SELECT SIZE
+            </p>
+            <button
+              onClick={() => setShowSizeGuide((s) => !s)}
+              style={{
+                background: "none",
+                border: 0,
+                fontSize: 12,
+                textDecoration: "underline",
+                cursor: "pointer",
+                color: "#111",
+              }}
+            >
+              {showSizeGuide ? "HIDE SIZE GUIDE" : "SIZE GUIDE"}
+            </button>
+          </div>
 
           <div
             style={{
@@ -434,12 +598,10 @@ export default function ProductPage() {
                 <button
                   key={item}
                   disabled={!inStock}
-                  onClick={() => {
-                    setSize(item);
-                    setMessage("");
-                  }}
+                  onClick={() => changeSize(item)}
                   style={{
-                    padding: "13px 3px",
+                    padding: "10px 3px",
+                    minHeight: 64,
                     background: size === item ? "#111" : "#fff",
                     color: size === item ? "#fff" : "#111",
                     border: "1px solid #ddd",
@@ -449,7 +611,12 @@ export default function ProductPage() {
                     fontSize: 12,
                   }}
                 >
-                  {item}
+                  <span style={{ display: "block", fontWeight: "bold" }}>{item}</span>
+                  {measurements.find((row) => row.size === item) && (
+                    <span style={{ display: "block", marginTop: 4, fontSize: 8, lineHeight: 1.35 }}>
+                      {measurements.find((row) => row.size === item)?.width} × {measurements.find((row) => row.size === item)?.length} cm
+                    </span>
+                  )}
                   {!inStock && (
                     <span style={{ display: "block", fontSize: 8 }}>
                       SOLD OUT
@@ -460,22 +627,111 @@ export default function ProductPage() {
             })}
           </div>
 
+          {showSizeGuide && (
+            <table
+              style={{
+                width: "100%",
+                borderCollapse: "collapse",
+                fontSize: 12,
+                margin: "10px 0 16px",
+                textAlign: "center",
+              }}
+            >
+              <thead>
+                <tr style={{ background: "#f5f5f5" }}>
+                  <th style={{ padding: 8, border: "1px solid #eee" }}>SIZE</th>
+                  <th style={{ padding: 8, border: "1px solid #eee" }}>WIDTH (cm)</th>
+                  <th style={{ padding: 8, border: "1px solid #eee" }}>
+                    LENGTH (cm)
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {measurements.map((row) => (
+                  <tr key={row.size}>
+                    <td style={{ padding: 8, border: "1px solid #eee" }}>
+                      {row.size}
+                    </td>
+                    <td style={{ padding: 8, border: "1px solid #eee" }}>
+                      {row.width}
+                    </td>
+                    <td style={{ padding: 8, border: "1px solid #eee" }}>
+                      {row.length}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+
           <p
             style={{
               fontSize: 12,
               color: available ? "#27834b" : "#c00",
             }}
           >
-            {available ? "IN STOCK" : "SOLD OUT"}
+            {!hasAvailableSizes
+              ? "SOLD OUT"
+              : !size
+                ? "PLEASE SELECT A SIZE"
+                : available
+              ? stock <= 5
+                ? `ONLY ${stock} LEFT`
+                : "IN STOCK"
+              : "SOLD OUT"}
           </p>
+
+          <p style={{ fontSize: 13, fontWeight: "bold", marginBottom: 8 }}>
+            QUANTITY
+          </p>
+
+          <div
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              border: "1px solid #ddd",
+            }}
+          >
+            <button
+              onClick={() => setQuantity((q) => Math.max(1, q - 1))}
+              disabled={!available}
+              style={{
+                width: 40,
+                height: 40,
+                background: "#fff",
+                border: 0,
+                fontSize: 18,
+                cursor: available ? "pointer" : "not-allowed",
+              }}
+            >
+              −
+            </button>
+            <span style={{ width: 40, textAlign: "center", fontSize: 14 }}>
+              {quantity}
+            </span>
+            <button
+              onClick={() => setQuantity((q) => Math.min(maxQty, q + 1))}
+              disabled={!available}
+              style={{
+                width: 40,
+                height: 40,
+                background: "#fff",
+                border: 0,
+                fontSize: 18,
+                cursor: available ? "pointer" : "not-allowed",
+              }}
+            >
+              +
+            </button>
+          </div>
 
           <button
             onClick={addToCart}
-            disabled={!available}
+            disabled={!hasAvailableSizes}
             style={{
               width: "100%",
               padding: 17,
-              marginTop: 10,
+              marginTop: 16,
               background: available ? "#111" : "#999",
               color: "#fff",
               border: 0,
@@ -484,30 +740,82 @@ export default function ProductPage() {
               cursor: available ? "pointer" : "not-allowed",
             }}
           >
-            ADD TO BAG
+            {!hasAvailableSizes ? "SOLD OUT" : !size ? "SELECT A SIZE" : "ADD TO BAG"}
           </button>
 
           {message && (
-            <p style={{ color: "#27834b", fontSize: 13 }}>
-              {message}
-            </p>
+            <p style={{ color: "#27834b", fontSize: 13 }}>{message}</p>
           )}
 
-          <div
-            style={{
-              marginTop: 25,
-              padding: 16,
-              background: "#f8f8f8",
-              fontSize: 13,
-              lineHeight: 1.8,
-            }}
-          >
-            <p><strong>PRODUCT DETAILS</strong></p>
-            <p>Fit: Oversized</p>
-            <p>Brand: MAVEX®</p>
+          <div style={{ marginTop: 28 }}>
+            <div style={{ display: "flex" }}>
+              <button
+                onClick={() => setTab("description")}
+                style={tabButton("description", "DESCRIPTION")}
+              >
+                DESCRIPTION
+              </button>
+              <button
+                onClick={() => setTab("details")}
+                style={tabButton("details", "DETAILS")}
+              >
+                DETAILS
+              </button>
+              <button
+                onClick={() => setTab("shipping")}
+                style={tabButton("shipping", "SHIPPING")}
+              >
+                SHIPPING
+              </button>
+            </div>
+
+            <div
+              style={{
+                padding: 16,
+                background: "#f8f8f8",
+                fontSize: 13,
+                lineHeight: 1.8,
+                color: "#444",
+              }}
+            >
+              {tab === "description" && (
+                <p style={{ margin: 0 }}>
+                  {product.description || "No description available."}
+                </p>
+              )}
+
+              {tab === "details" && (
+                <>
+                  <p style={{ margin: 0 }}>Fit: Oversized</p>
+                  <p style={{ margin: 0 }}>Brand: MAVEX®</p>
+                  <p style={{ margin: 0 }}>Care: Machine wash cold</p>
+                </>
+              )}
+
+              {tab === "shipping" && (
+                <>
+                  <p style={{ margin: 0 }}>Delivery across Egypt.</p>
+                  <p style={{ margin: 0 }}>
+                    Exchange or return within 14 days, unworn with tags.
+                  </p>
+                </>
+              )}
+            </div>
           </div>
         </section>
       </div>
+
+      <section dir="rtl" style={{ maxWidth: 1150, margin: "30px auto", padding: "25px 0", borderTop: "1px solid #eee" }}>
+        <h2 style={{ fontSize: 22, marginBottom: 18 }}>Customer Reviews ({comments.length})</h2>
+        {comments.length === 0 ? <p style={{ color: "#777", marginBottom: 20 }}>No reviews yet. Share your thoughts about this product.</p> : <div style={{ display: "grid", gap: 10, marginBottom: 24 }}>{comments.map(comment => <article key={comment.id} style={{ background: "#f8f8f8", padding: 15, borderRadius: 8 }}><strong>{comment.name}</strong><span style={{ color: "#c78521", marginInlineStart: 10 }}>{"★".repeat(comment.rating)}{"☆".repeat(5-comment.rating)}</span><p style={{ marginTop: 8, lineHeight: 1.7 }}>{comment.message}</p>{comment.reply && <p style={{ marginTop: 8, color: "#555", fontSize: 12 }}>MAVEX reply: {comment.reply}</p>}</article>)}</div>}
+        <form onSubmit={submitComment} style={{ display: "grid", gap: 10, maxWidth: 620 }}>
+          <label>Your name<input required maxLength={60} value={commentName} onChange={e => setCommentName(e.target.value)} style={{ display: "block", width: "100%", marginTop: 6, padding: 12, border: "1px solid #ddd", borderRadius: 6 }} /></label>
+          <label>Your rating<select value={commentRating} onChange={e => setCommentRating(Number(e.target.value))} style={{ display: "block", marginTop: 6, padding: 11, border: "1px solid #ddd", borderRadius: 6 }}>{[5,4,3,2,1].map(n => <option key={n} value={n}>{"★".repeat(n)} ({n}/5)</option>)}</select></label>
+          <label>Your review<textarea required minLength={5} maxLength={800} rows={4} value={commentText} onChange={e => setCommentText(e.target.value)} style={{ display: "block", width: "100%", marginTop: 6, padding: 12, border: "1px solid #ddd", borderRadius: 6, resize: "vertical" }} /></label>
+          <button disabled={commentBusy} className="add-button" style={{ justifySelf: "start", borderRadius: 6 }}>{commentBusy ? "SUBMITTING..." : "SUBMIT REVIEW"}</button>
+          {commentNotice && <p role="status" style={{ color: commentNotice.includes("Thank you") ? "#16804a" : "#b42318" }}>{commentNotice}</p>}
+        </form>
+      </section>
 
       <style jsx>{`
         @media (max-width: 700px) {
@@ -523,5 +831,19 @@ export default function ProductPage() {
         }
       `}</style>
     </main>
+  );
+}
+
+export default function ProductPage() {
+  return (
+    <Suspense
+      fallback={
+        <main style={{ padding: 40, textAlign: "center" }}>
+          LOADING MAVEX PRODUCT...
+        </main>
+      }
+    >
+      <ProductContent />
+    </Suspense>
   );
 }

@@ -1,65 +1,76 @@
-
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { localProducts } from "@/lib/catalog";
+import { supabase } from "@/lib/supabase";
 
-const products = [
-  { name: "BLACK OVERSIZED TEE", price: 899, image: "https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=700" },
-  { name: "WHITE STREET TEE", price: 899, image: "https://images.unsplash.com/photo-1503342217505-b0a15ec3261c?w=700" },
-  { name: "GRAPHIC PINK TEE", price: 999, image: "https://images.unsplash.com/photo-1576566588028-4147f3842f27?w=700" },
-  { name: "OVERSIZED HOODIE", price: 1499, image: "https://images.unsplash.com/photo-1556821840-3a63f95609a7?w=700" },
-];
-
-type CartItem = {
+type Product = {
+  id: string;
   name: string;
   price: number;
-  size: string;
-  quantity: number;
+  compare_at_price: number | null;
+  product_images: {
+    image_url: string;
+    alt_text: string | null;
+    sort_order: number | null;
+  }[];
 };
 
+const fallbackImages = [
+  "https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=700",
+  "https://images.unsplash.com/photo-1503342217505-b0a15ec3261c?w=700",
+  "https://images.unsplash.com/photo-1576566588028-4147f3842f27?w=700",
+  "https://images.unsplash.com/photo-1556821840-3a63f95609a7?w=700",
+];
+
 export default function Home() {
-  const [cart, setCart] = useState<CartItem[]>([]);
-  const [sizes, setSizes] = useState(["M", "M", "M", "M"]);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
 
-  function addToCart(index: number) {
-  const product = products[index];
-  const size = sizes[index];
+  useEffect(() => {
+    let cancelled = false;
 
-  const existing = cart.find(
-    (item) => item.name === product.name && item.size === size
-  );
+    async function loadProducts() {
+      try {
+        const [catalogResponse, stateResponse] = await Promise.all([
+          fetch("/api/catalog", { cache: "no-store" }),
+          fetch("/api/catalog/state", { cache: "no-store" }),
+        ]);
+        const catalog = catalogResponse.ok ? await catalogResponse.json() as Product[] : localProducts;
+        const state = stateResponse.ok ? await stateResponse.json() as { deletedIds: string[]; overrides: Record<string, Product> } : { deletedIds: [], overrides: {} };
+        const { data, error } = await supabase
+          .from("products")
+          .select("id, name, price, compare_at_price, product_images(image_url, alt_text, sort_order)")
+          .eq("status", "active");
+        if (error) console.error("Could not load database products:", error.message);
 
-  let updatedCart;
+        const deleted = new Set(state.deletedIds || []);
+        const merged = new Map<string, Product>();
+        for (const product of [...catalog, ...((data || []) as unknown as Product[])]) {
+          if (deleted.has(product.id)) continue;
+          merged.set(product.id, state.overrides?.[product.id] ? { ...product, ...state.overrides[product.id] } : product);
+        }
+        if (!cancelled) setProducts([...merged.values()]);
+      } catch {
+        if (!cancelled) {
+          setProducts(localProducts);
+          setLoadError(true);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
 
-  if (existing) {
-    updatedCart = cart.map((item) =>
-      item.name === product.name && item.size === size
-        ? { ...item, quantity: item.quantity + 1 }
-        : item
-    );
-  } else {
-    updatedCart = [
-      ...cart,
-      { ...product, size, quantity: 1 },
-    ];
-  }
-
-  setCart(updatedCart);
-
-  localStorage.setItem(
-    "mavex-cart",
-    JSON.stringify(updatedCart)
-  );
-}
-
-  const cartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
-  const total = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+    loadProducts();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   return (
     <main>
-      <div className="announcement">
-        MAVEX STREETWEAR — NEW COLLECTION 2026
-      </div>
+      <div className="announcement">MAVEX STREETWEAR — NEW COLLECTION 2026</div>
 
       <header className="navbar">
         <h1 className="logo">MAVEX®</h1>
@@ -68,7 +79,7 @@ export default function Home() {
           <a href="#shop">SHOP</a>
           <a href="#about">ABOUT</a>
         </nav>
-        <a href="/cart">BAG ({cartCount})</a>
+        <a href="/cart">BAG</a>
       </header>
 
       <section className="hero" id="home">
@@ -82,43 +93,39 @@ export default function Home() {
 
       <section className="products" id="shop">
         <p>DISCOVER MAVEX</p>
-        <h2>NEW ARRIVALS<span>.</span></h2>
+        <h2>WINTER 27 COLLECTION<span>.</span></h2>
+
+        {loading && <p>LOADING COLLECTION...</p>}
+        {!loading && loadError && <p>THE LOCAL COLLECTION IS SHOWN. SOME PRODUCTS MAY BE UNAVAILABLE.</p>}
+        {!loading && !loadError && products.length === 0 && <p>NO PRODUCTS AVAILABLE RIGHT NOW.</p>}
 
         <div className="product-grid">
-          {products.map((product, index) => (
-            <div className="product-card" key={product.name}>
-              <a
-  href={`/product/${index}`}
-  style={{ color: "inherit", textDecoration: "none" }}
->
-  <img
-    className="product-image"
-    src={product.image}
-    alt={product.name}
-  />
-  <h3>{product.name}</h3>
-</a>
-              <p>EGP {product.price}</p>
-
-              <select
-                value={sizes[index]}
-                onChange={(e) => {
-                  const newSizes = [...sizes];
-                  newSizes[index] = e.target.value;
-                  setSizes(newSizes);
-                }}
-              >
-                <option value="S">SIZE: S</option>
-                <option value="M">SIZE: M</option>
-                <option value="L">SIZE: L</option>
-                <option value="XL">SIZE: XL</option>
-              </select>
-
-              <button className="add-button" onClick={() => addToCart(index)}>
-                ADD TO CART
-              </button>
-            </div>
-          ))}
+          {products.map((product, index) => {
+            const image = product.product_images[0]?.image_url || fallbackImages[index % fallbackImages.length];
+            return (
+              <div className="product-card" key={product.id}>
+                <a href={"/product/" + product.id} style={{ color: "inherit", textDecoration: "none" }}>
+                  <img className="product-image" src={image} alt={product.product_images[0]?.alt_text || product.name} />
+                  <h3>{product.name}</h3>
+                </a>
+                <p>
+                  EGP {Number(product.price).toLocaleString("en-EG")}
+                  {product.compare_at_price && product.compare_at_price > product.price && (
+                    <del style={{ marginInlineStart: 10, color: "#888", fontSize: 13 }}>
+                      EGP {Number(product.compare_at_price).toLocaleString("en-EG")}
+                    </del>
+                  )}
+                </p>
+                <a
+                  className="add-button"
+                  href={"/product/" + product.id}
+                  style={{ display: "block", textAlign: "center", textDecoration: "none" }}
+                >
+                  CHOOSE COLOR &amp; SIZE
+                </a>
+              </div>
+            );
+          })}
         </div>
       </section>
 
@@ -131,6 +138,7 @@ export default function Home() {
         <h2>MAVEX®</h2>
         <p>STREET CULTURE. OWN YOUR STYLE.</p>
         <small>© 2026 MAVEX. ALL RIGHTS RESERVED.</small>
+        <p style={{ marginTop: 16, display: "flex", justifyContent: "center", gap: 18 }}><a href="/returns" style={{ color: "#555", fontSize: 11 }}>RETURNS &amp; EXCHANGES</a><a href="/admin" style={{ color: "#888", fontSize: 10 }}>ADMIN</a></p>
       </footer>
     </main>
   );

@@ -7,7 +7,7 @@ export default async function TestDatabase() {
   const { data, error } = await supabase
     .from("products")
     .select("id, name, price, status")
-    .limit(10);
+    .limit(100);
 
   if (error) {
     return (

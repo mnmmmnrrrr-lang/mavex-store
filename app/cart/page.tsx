@@ -2,6 +2,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 
 type CartItem = {
   name: string;
@@ -39,13 +40,13 @@ export default function CartPage() {
   return (
     <main className="cart-page">
       <header className="navbar">
-        <a href="/" className="logo">
+        <Link href="/" className="logo">
           MAVEX®
-        </a>
+        </Link>
 
-        <a href="/#shop">
+        <Link href="/#shop">
           CONTINUE SHOPPING
-        </a>
+        </Link>
       </header>
 
       <section className="cart-container">
@@ -73,13 +74,13 @@ export default function CartPage() {
           }}>
             <h2>Your bag is empty.</h2>
 
-            <a
+            <Link
               href="/#shop"
               className="shop-button"
               style={{ marginTop: 25 }}
             >
               EXPLORE PRODUCTS ↗
-            </a>
+            </Link>
           </div>
         ) : (
           <>
@@ -163,28 +164,18 @@ export default function CartPage() {
                 TOTAL: EGP {total.toLocaleString("en-EG")}
               </h2>
 
-              <button
+              <Link
+                href="/checkout"
                 className="add-button"
-                style={{ marginTop: 20 }}
-                onClick={() =>
-                  alert("Checkout will be available after we set up ordering.")
-                }
+                style={{
+                  display: "inline-block",
+                  marginTop: 20,
+                  textDecoration: "none",
+                  textAlign: "center",
+                }}
               >
-                
-<a
-  href="/checkout"
-  className="add-button"
-  style={{
-    display: "inline-block",
-    marginTop: 20,
-    textDecoration: "none",
-    textAlign: "center"
-  }}
->
-  T
-</a>
-
-              </button>
+                PROCEED TO CHECKOUT
+              </Link>
             </div>
           </>
         )}
