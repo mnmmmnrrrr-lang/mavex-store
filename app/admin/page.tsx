@@ -19,7 +19,11 @@ type AdminProduct = {
   description: string | null;
   price: number;
   compare_at_price: number | null;
-  size_guide?: { size: string; width: number; length: number }[];
+  size_guide?: { size: string; label?: string; width: number; length: number }[];
+  size_guide_title?: string;
+  size_guide_size_label?: string;
+  size_guide_width_label?: string;
+  size_guide_length_label?: string;
   product_images: { image_url: string; alt_text: string | null; sort_order: number | null }[];
   product_variants: { id: string; color: string; size: string; stock_quantity: number; price_override: number | null; is_active: boolean | null }[];
 };
@@ -30,13 +34,13 @@ type OperationsData = {
 };
 
 const sizes = ["XS", "S", "M", "L", "XL", "XXL"];
-const standardMeasurements: Record<string, { width: string; length: string }> = {
-  XS: { width: "54", length: "70" },
-  S: { width: "104", length: "68" },
-  M: { width: "108", length: "70" },
-  L: { width: "112", length: "72" },
-  XL: { width: "116", length: "74" },
-  XXL: { width: "120", length: "76" },
+const standardMeasurements: Record<string, { label: string; width: string; length: string }> = {
+  XS: { label: "XS", width: "54", length: "70" },
+  S: { label: "S", width: "104", length: "68" },
+  M: { label: "M", width: "108", length: "70" },
+  L: { label: "L", width: "112", length: "72" },
+  XL: { label: "XL", width: "116", length: "74" },
+  XXL: { label: "XXL", width: "120", length: "76" },
 };
 const inputStyle = {
   width: "100%",
@@ -78,6 +82,10 @@ export default function AdminPage() {
   const [compareAtPrice, setCompareAtPrice] = useState("1000");
   const [variants, setVariants] = useState<VariantDraft[]>(defaultVariants);
   const [sizeMeasurements, setSizeMeasurements] = useState(standardMeasurements);
+  const [sizeGuideTitle, setSizeGuideTitle] = useState("HOODIE");
+  const [sizeGuideSizeLabel, setSizeGuideSizeLabel] = useState("SIZE");
+  const [sizeGuideWidthLabel, setSizeGuideWidthLabel] = useState("WIDTH");
+  const [sizeGuideLengthLabel, setSizeGuideLengthLabel] = useState("LENGTH");
   const [images, setImages] = useState<File[]>([]);
   const [activeTab, setActiveTab] = useState<"products" | "orders" | "returns" | "comments">("products");
   const [operations, setOperations] = useState<OperationsData>({ orders: [], returns: [], comments: [] });
@@ -147,6 +155,10 @@ export default function AdminPage() {
     setCompareAtPrice("1000");
     setVariants(defaultVariants());
     setSizeMeasurements(standardMeasurements);
+    setSizeGuideTitle("HOODIE");
+    setSizeGuideSizeLabel("SIZE");
+    setSizeGuideWidthLabel("WIDTH");
+    setSizeGuideLengthLabel("LENGTH");
     setImages([]);
     const fileInput = document.querySelector<HTMLInputElement>("#product-images");
     if (fileInput) fileInput.value = "";
@@ -157,6 +169,11 @@ export default function AdminPage() {
     setEditingProduct(product);
     setName(product.name);
     setDescription(product.description || "");
+    const pantsGuide = /pant|jogger|trouser/i.test(product.name);
+    setSizeGuideTitle(product.size_guide_title || (pantsGuide ? "PANTS" : "HOODIE"));
+    setSizeGuideSizeLabel(product.size_guide_size_label || "SIZE");
+    setSizeGuideWidthLabel(product.size_guide_width_label || (pantsGuide ? "WAIST" : "WIDTH"));
+    setSizeGuideLengthLabel(product.size_guide_length_label || "LENGTH");
     setPrice(String(product.price));
     setCompareAtPrice(product.compare_at_price === null ? "" : String(product.compare_at_price));
     setVariants(product.product_variants.map((variant) => ({
@@ -169,7 +186,7 @@ export default function AdminPage() {
     })));
     const guide = { ...standardMeasurements };
     for (const item of product.size_guide || []) {
-      guide[item.size] = { width: String(item.width), length: String(item.length) };
+      guide[item.size] = { label: item.label || item.size, width: String(item.width), length: String(item.length) };
     }
     setSizeMeasurements(guide);
     setImages([]);
@@ -214,10 +231,15 @@ export default function AdminPage() {
     form.set("price", price);
     form.set("compareAtPrice", compareAtPrice);
     form.set("variants", JSON.stringify(variants));
+    form.set("sizeGuideTitle", sizeGuideTitle);
+    form.set("sizeGuideSizeLabel", sizeGuideSizeLabel);
+    form.set("sizeGuideWidthLabel", sizeGuideWidthLabel);
+    form.set("sizeGuideLengthLabel", sizeGuideLengthLabel);
     if (editingProduct) form.set("baseProduct", JSON.stringify(editingProduct));
     const productSizes = [...new Set(variants.map((variant) => variant.size))];
     form.set("sizeGuide", JSON.stringify(productSizes.map((size) => ({
       size,
+      label: sizeMeasurements[size]?.label || size,
       width: sizeMeasurements[size]?.width,
       length: sizeMeasurements[size]?.length,
     }))));
@@ -340,13 +362,22 @@ export default function AdminPage() {
               </div>
 
               <div style={{ marginTop: 18 }}>
-                <p style={labelStyle}>Width and length per size (cm)</p>
+                <p style={labelStyle}>Customer size chart</p>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10, marginBottom: 12 }}>
+                  <label style={{ fontSize: 11, color: "#666" }}>Chart title<input aria-label="Size chart title" maxLength={40} value={sizeGuideTitle} onChange={(event) => setSizeGuideTitle(event.target.value)} placeholder="HOODIE or PANTS" style={{ ...inputStyle, marginTop: 4 }} /></label>
+                  <label style={{ fontSize: 11, color: "#666" }}>Size column heading<input aria-label="Size column heading" maxLength={20} value={sizeGuideSizeLabel} onChange={(event) => setSizeGuideSizeLabel(event.target.value)} style={{ ...inputStyle, marginTop: 4 }} /></label>
+                  <label style={{ fontSize: 11, color: "#666" }}>Length column heading<input aria-label="Length column heading" maxLength={20} value={sizeGuideLengthLabel} onChange={(event) => setSizeGuideLengthLabel(event.target.value)} placeholder="LENGTH" style={{ ...inputStyle, marginTop: 4 }} /></label>
+                  <label style={{ fontSize: 11, color: "#666" }}>Width / waist heading<input aria-label="Width or waist column heading" maxLength={20} value={sizeGuideWidthLabel} onChange={(event) => setSizeGuideWidthLabel(event.target.value)} placeholder="WIDTH or WAIST" style={{ ...inputStyle, marginTop: 4 }} /></label>
+                </div>
                 <div style={{ display: "grid", gap: 8 }}>
                   {productSizes.map((size) => (
                     <div key={size} style={{ display: "grid", gridTemplateColumns: "50px 1fr 1fr", gap: 8, alignItems: "center" }}>
-                      <strong style={{ fontSize: 13 }}>{size}</strong>
-                      <label style={{ fontSize: 11, color: "#666" }}>Width<input aria-label={size + " width"} type="number" min="1" step="0.1" required value={sizeMeasurements[size]?.width || ""} onChange={(event) => setSizeMeasurements((current) => ({ ...current, [size]: { ...current[size], width: event.target.value } }))} style={{ ...inputStyle, marginTop: 4 }} /></label>
-                      <label style={{ fontSize: 11, color: "#666" }}>Length<input aria-label={size + " length"} type="number" min="1" step="0.1" required value={sizeMeasurements[size]?.length || ""} onChange={(event) => setSizeMeasurements((current) => ({ ...current, [size]: { ...current[size], length: event.target.value } }))} style={{ ...inputStyle, marginTop: 4 }} /></label>
+                      <label style={{ fontSize: 10, color: "#666" }}>Variant<strong style={{ display: "block", marginTop: 10, fontSize: 13, color: "#111" }}>{size}</strong></label>
+                      <label style={{ fontSize: 11, color: "#666" }}>Chart size label<input aria-label={size + " chart label"} maxLength={30} required value={sizeMeasurements[size]?.label || size} onChange={(event) => setSizeMeasurements((current) => ({ ...current, [size]: { ...current[size], label: event.target.value } }))} placeholder={size} style={{ ...inputStyle, marginTop: 4 }} /></label>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                        <label style={{ fontSize: 10, color: "#666" }}>{sizeGuideLengthLabel || "Length"}<input aria-label={size + " length"} type="number" min="1" step="0.1" required value={sizeMeasurements[size]?.length || ""} onChange={(event) => setSizeMeasurements((current) => ({ ...current, [size]: { ...current[size], length: event.target.value } }))} style={{ ...inputStyle, marginTop: 4 }} /></label>
+                        <label style={{ fontSize: 10, color: "#666" }}>{sizeGuideWidthLabel || "Width"}<input aria-label={size + " width"} type="number" min="1" step="0.1" required value={sizeMeasurements[size]?.width || ""} onChange={(event) => setSizeMeasurements((current) => ({ ...current, [size]: { ...current[size], width: event.target.value } }))} style={{ ...inputStyle, marginTop: 4 }} /></label>
+                      </div>
                     </div>
                   ))}
                 </div>

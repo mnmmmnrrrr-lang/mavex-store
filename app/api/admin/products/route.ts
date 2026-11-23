@@ -17,7 +17,7 @@ type VariantInput = {
   is_active?: unknown;
 };
 
-type SizeGuideInput = { size?: unknown; width?: unknown; length?: unknown };
+type SizeGuideInput = { size?: unknown; label?: unknown; width?: unknown; length?: unknown };
 
 function parseProduct(form: FormData) {
   const name = String(form.get("name") || "").trim();
@@ -83,12 +83,16 @@ function parseProduct(form: FormData) {
   const productSizes = [...new Set(variants.map((variant) => variant.size))];
   const sizeGuide = guideInput
     .filter((row) => productSizes.includes(String(row.size)) && Number(row.width) > 0 && Number(row.length) > 0)
-    .map((row) => ({ size: String(row.size), width: Number(row.width), length: Number(row.length) }));
+    .map((row) => ({ size: String(row.size), label: String(row.label || row.size).trim().slice(0, 30), width: Number(row.width), length: Number(row.length) }));
   if (sizeGuide.length !== productSizes.length) {
     throw new Error("Enter the width and length for each product size.");
   }
 
-  return { name, description, price, compareAtPrice, variants, sizeGuide };
+  const sizeGuideTitle = String(form.get("sizeGuideTitle") || "HOODIE").trim().slice(0, 40);
+  const sizeGuideSizeLabel = String(form.get("sizeGuideSizeLabel") || "SIZE").trim().slice(0, 20);
+  const sizeGuideWidthLabel = String(form.get("sizeGuideWidthLabel") || "WIDTH").trim().slice(0, 20);
+  const sizeGuideLengthLabel = String(form.get("sizeGuideLengthLabel") || "LENGTH").trim().slice(0, 20);
+  return { name, description, price, compareAtPrice, variants, sizeGuide, sizeGuideTitle, sizeGuideSizeLabel, sizeGuideWidthLabel, sizeGuideLengthLabel };
 }
 
 function isAuthorized(request: NextRequest) {
@@ -132,6 +136,10 @@ export async function POST(request: NextRequest) {
       price: fields.price,
       compare_at_price: fields.compareAtPrice,
       size_guide: fields.sizeGuide,
+      size_guide_title: fields.sizeGuideTitle,
+      size_guide_size_label: fields.sizeGuideSizeLabel,
+      size_guide_width_label: fields.sizeGuideWidthLabel,
+      size_guide_length_label: fields.sizeGuideLengthLabel,
       product_images: productImages,
       product_variants: fields.variants,
     };

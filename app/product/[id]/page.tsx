@@ -20,7 +20,11 @@ type Product = {
   description: string | null;
   price: number;
   compare_at_price: number | null;
-  size_guide?: { size: string; width: number; length: number }[];
+  size_guide?: { size: string; label?: string; width: number; length: number }[];
+  size_guide_title?: string;
+  size_guide_size_label?: string;
+  size_guide_width_label?: string;
+  size_guide_length_label?: string;
   product_images: {
     image_url: string;
     alt_text: string | null;
@@ -56,12 +60,12 @@ const colorCodes: Record<string, string> = {
 };
 
 const sizeGuide = [
-  { size: "XS", width: "54", length: "70" },
-  { size: "S", width: "104", length: "68" },
-  { size: "M", width: "108", length: "70" },
-  { size: "L", width: "112", length: "72" },
-  { size: "XL", width: "116", length: "74" },
-  { size: "XXL", width: "120", length: "76" },
+  { size: "XS", label: "XS", width: "54", length: "70" },
+  { size: "S", label: "S", width: "104", length: "68" },
+  { size: "M", label: "M", width: "108", length: "70" },
+  { size: "L", label: "L", width: "112", length: "72" },
+  { size: "XL", label: "XL", width: "116", length: "74" },
+  { size: "XXL", label: "XXL", width: "120", length: "76" },
 ];
 
 function ProductContent() {
@@ -216,6 +220,11 @@ function ProductContent() {
 
   const variants = product.product_variants;
   const measurements = product.size_guide?.length ? product.size_guide : sizeGuide;
+  const pantsGuide = /pant|jogger|trouser/i.test(product.name);
+  const sizeGuideTitle = product.size_guide_title || (pantsGuide ? "PANTS" : "HOODIE");
+  const sizeGuideSizeLabel = product.size_guide_size_label || "SIZE";
+  const sizeGuideWidthLabel = product.size_guide_width_label || (pantsGuide ? "WAIST" : "WIDTH");
+  const sizeGuideLengthLabel = product.size_guide_length_label || "LENGTH";
   const colors = [...new Set(variants.map((v) => v.color))];
 
   const sizes = [
@@ -629,41 +638,28 @@ function ProductContent() {
           </div>
 
           {showSizeGuide && (
-            <table
-                className="mavex-size-chart"
-                style={{
-                width: "100%",
-                borderCollapse: "collapse",
-                fontSize: 12,
-                margin: "10px 0 16px",
-                textAlign: "center",
-              }}
-            >
-              <thead>
-                <tr style={{ background: "#f5f5f5" }}>
-                  <th style={{ padding: 8, border: "1px solid #eee" }}>SIZE</th>
-                  <th style={{ padding: 8, border: "1px solid #eee" }}>WIDTH (cm)</th>
-                  <th style={{ padding: 8, border: "1px solid #eee" }}>
-                    LENGTH (cm)
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {measurements.map((row) => (
-                  <tr key={row.size}>
-                    <td style={{ padding: 8, border: "1px solid #eee" }}>
-                      {row.size}
-                    </td>
-                    <td style={{ padding: 8, border: "1px solid #eee" }}>
-                      {row.width}
-                    </td>
-                    <td style={{ padding: 8, border: "1px solid #eee" }}>
-                      {row.length}
-                    </td>
+            <div className="mavex-size-chart-wrap">
+              <h3 className="mavex-size-chart-heading">SIZE CHART</h3>
+              <p className="mavex-size-chart-subheading">“{sizeGuideTitle}”</p>
+              <table className="mavex-size-chart">
+                <thead>
+                  <tr>
+                    <th>{sizeGuideSizeLabel}</th>
+                    <th>{sizeGuideLengthLabel} (cm)</th>
+                    <th>{sizeGuideWidthLabel} (cm)</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {measurements.map((row) => (
+                    <tr key={row.size}>
+                      <td>{row.label || row.size}</td>
+                      <td>{row.length}</td>
+                      <td>{row.width}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
 
           <p

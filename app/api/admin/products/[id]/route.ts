@@ -5,7 +5,7 @@ import { getCatalogProduct } from "../../../../../lib/catalog-server";
 import { deleteCatalogProduct, saveCatalogProduct, saveProductImage } from "../../../../../lib/store-db";
 
 type VariantInput = { id?: string; color?: unknown; size?: unknown; stock_quantity?: unknown; price_override?: unknown; is_active?: unknown };
-type GuideInput = { size?: unknown; width?: unknown; length?: unknown };
+type GuideInput = { size?: unknown; label?: unknown; width?: unknown; length?: unknown };
 
 function isAuthorized(request: NextRequest) {
   return isAdminSessionValid(request.cookies.get(ADMIN_COOKIE)?.value);
@@ -73,8 +73,14 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     const productSizes = [...new Set(variants.map((variant) => variant.size))];
     const sizeGuide = inputGuide
       .filter((row) => productSizes.includes(String(row.size)) && Number(row.width) > 0 && Number(row.length) > 0)
-      .map((row) => ({ size: String(row.size), width: Number(row.width), length: Number(row.length) }));
+      .map((row) => ({ size: String(row.size), label: String(row.label || row.size).trim().slice(0, 30), width: Number(row.width), length: Number(row.length) }));
     if (sizeGuide.length !== productSizes.length) throw new Error("Enter the width and length for each product size.");
+
+    const pantsGuide = /pant|jogger|trouser/i.test(name);
+    const sizeGuideTitle = String(form.get("sizeGuideTitle") || (pantsGuide ? "PANTS" : "HOODIE")).trim().slice(0, 40);
+    const sizeGuideSizeLabel = String(form.get("sizeGuideSizeLabel") || "SIZE").trim().slice(0, 20);
+    const sizeGuideWidthLabel = String(form.get("sizeGuideWidthLabel") || (pantsGuide ? "WAIST" : "WIDTH")).trim().slice(0, 20);
+    const sizeGuideLengthLabel = String(form.get("sizeGuideLengthLabel") || "LENGTH").trim().slice(0, 20);
 
     const nextProduct: CatalogProduct = {
       ...current,
@@ -83,6 +89,10 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       price,
       compare_at_price: compareAtPrice,
       size_guide: sizeGuide,
+      size_guide_title: sizeGuideTitle,
+      size_guide_size_label: sizeGuideSizeLabel,
+      size_guide_width_label: sizeGuideWidthLabel,
+      size_guide_length_label: sizeGuideLengthLabel,
       product_images: current.product_images,
       product_variants: variants,
     };
