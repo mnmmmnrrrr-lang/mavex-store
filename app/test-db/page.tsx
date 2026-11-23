@@ -1,7 +1,8 @@
 import { supabase } from "@/lib/supabase";
 import { connection } from "next/server";
+import { Suspense } from "react";
 
-export default async function TestDatabase() {
+async function TestDatabaseContent() {
   await connection();
 
   const { data, error } = await supabase
@@ -29,5 +30,13 @@ export default async function TestDatabase() {
         </div>
       ))}
     </main>
+  );
+}
+
+export default function TestDatabase() {
+  return (
+    <Suspense fallback={<main style={{ padding: 30 }}><h1>Checking database connection...</h1></main>}>
+      <TestDatabaseContent />
+    </Suspense>
   );
 }
