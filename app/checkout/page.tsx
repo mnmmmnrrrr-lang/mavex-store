@@ -132,7 +132,7 @@ export default function CheckoutPage() {
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Could not save your order.");
       localStorage.removeItem("mavex-cart");
-      localStorage.setItem("mavex-last-order-phone", form.phone);
+      localStorage.setItem("mavex-last-order-email", form.email.trim().toLowerCase());
 
       setCart([]);
       setRecentOrderId(result.id);

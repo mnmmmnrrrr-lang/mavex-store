@@ -9,22 +9,8 @@ type CustomerOrder = {
   items: { name: string; size: string; color?: string; quantity: number; image?: string }[];
 };
 
-function toE164(value: string) {
-  const digits = value.replace(/\D/g, "");
-  if (digits.startsWith("0020")) return "+" + digits.slice(2);
-  if (digits.startsWith("20") && digits.length === 12) return "+" + digits;
-  if (digits.startsWith("0")) return "+20" + digits.slice(1);
-  if (digits.length === 10 && digits.startsWith("1")) return "+20" + digits;
-  return "+" + digits;
-}
-
-function validEgyptPhone(value: string) {
-  const normalized = value.replace(/[\s()-]/g, "");
-  return /^01[0125]\d{8}$/.test(normalized) || /^\+201[0125]\d{8}$/.test(normalized);
-}
-
 export default function AccountPage() {
-  const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
   const [codeSent, setCodeSent] = useState(false);
   const [orders, setOrders] = useState<CustomerOrder[]>([]);
@@ -41,14 +27,14 @@ export default function AccountPage() {
 
   useEffect(() => {
     let cancelled = false;
-    const previousPhone = localStorage.getItem("mavex-last-order-phone");
-    if (previousPhone) setPhone(previousPhone);
+    const previousEmail = localStorage.getItem("mavex-last-order-email");
+    if (previousEmail) setEmail(previousEmail);
     supabase.auth.getSession().then(async ({ data }) => {
       const session = data.session;
       if (!session) return;
       try {
         await loadOrders(session.access_token);
-        if (!cancelled) { setPhone(session.user.phone || ""); setSignedIn(true); }
+        if (!cancelled) { setEmail(session.user.email || ""); setSignedIn(true); }
       } catch { await supabase.auth.signOut(); }
     });
     return () => { cancelled = true; };
@@ -56,12 +42,13 @@ export default function AccountPage() {
 
   async function requestCode(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setMessage("");
-    if (!validEgyptPhone(phone)) { setMessage("Enter a valid Egyptian mobile number, such as 01012345678."); return; }
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) { setMessage("Enter a valid email address."); return; }
     setBusy(true);
     try {
-      const { error } = await supabase.auth.signInWithOtp({ phone: toE164(phone), options: { shouldCreateUser: true } });
+      const { error } = await supabase.auth.signInWithOtp({ email: normalizedEmail, options: { shouldCreateUser: true } });
       if (error) throw error;
-      setCodeSent(true); setMessage("We sent a verification code to your phone.");
+      setEmail(normalizedEmail); setCodeSent(true); setMessage("We sent a verification code to your email.");
     } catch (error) { setMessage(error instanceof Error ? error.message : "Could not send the verification code."); }
     finally { setBusy(false); }
   }
@@ -69,7 +56,7 @@ export default function AccountPage() {
   async function verifyCode(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true); setMessage("");
     try {
-      const { data, error } = await supabase.auth.verifyOtp({ phone: toE164(phone), token: code.trim(), type: "sms" });
+      const { data, error } = await supabase.auth.verifyOtp({ email: email.trim().toLowerCase(), token: code.trim(), type: "email" });
       if (error) throw error;
       if (!data.session) throw new Error("The code was accepted, but no session was created. Try again.");
       await loadOrders(data.session.access_token); setSignedIn(true); setMessage("");
@@ -92,16 +79,16 @@ export default function AccountPage() {
       </header>
       <section style={{ maxWidth: 980, margin: "auto" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "end", gap: 12, flexWrap: "wrap", marginBottom: 22 }}>
-          <div><p style={{ color: "#a54d7e", fontSize: 11, fontWeight: 800, letterSpacing: 2 }}>CUSTOMER ACCOUNT</p><h1 style={{ marginTop: 7, fontSize: 32 }}>My Orders</h1><p style={{ color: "#666", marginTop: 7 }}>Sign in with the phone number you used at checkout to see saved orders and delivery status.</p></div>
+          <div><p style={{ color: "#a54d7e", fontSize: 11, fontWeight: 800, letterSpacing: 2 }}>CUSTOMER ACCOUNT</p><h1 style={{ marginTop: 7, fontSize: 32 }}>My Orders</h1><p style={{ color: "#666", marginTop: 7 }}>Sign in with the email address you used at checkout to see saved orders and delivery status.</p></div>
           {signedIn && <button type="button" onClick={signOut} style={{ border: "1px solid #ddd", padding: "10px 14px", background: "white", borderRadius: 6, cursor: "pointer" }}>SIGN OUT</button>}
         </div>
 
         {!signedIn && <form onSubmit={codeSent ? verifyCode : requestCode} style={{ maxWidth: 520, background: "white", padding: 24, borderRadius: 12, boxShadow: "0 8px 30px #0000000d" }}>
-          {!codeSent ? <><label htmlFor="account-phone">Mobile number</label><input id="account-phone" type="tel" autoComplete="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="01XXXXXXXXX" style={inputStyle} /><button disabled={busy} className="add-button" style={{ marginTop: 15, width: "100%" }}>{busy ? "SENDING CODE..." : "SEND SIGN-IN CODE"}</button></> : <><label htmlFor="account-code">Verification code</label><input id="account-code" inputMode="numeric" autoComplete="one-time-code" value={code} onChange={e => setCode(e.target.value)} placeholder="Enter the SMS code" style={inputStyle} /><button disabled={busy} className="add-button" style={{ marginTop: 15, width: "100%" }}>{busy ? "VERIFYING..." : "VERIFY AND VIEW ORDERS"}</button><button type="button" onClick={() => { setCodeSent(false); setCode(""); setMessage(""); }} style={{ marginTop: 12, border: 0, background: "transparent", textDecoration: "underline", cursor: "pointer" }}>Change phone number</button></>}
+          {!codeSent ? <><label htmlFor="account-email">Email address</label><input id="account-email" type="email" autoComplete="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" style={inputStyle} /><button disabled={busy} className="add-button" style={{ marginTop: 15, width: "100%" }}>{busy ? "SENDING CODE..." : "SEND SIGN-IN CODE"}</button></> : <><label htmlFor="account-code">Verification code</label><input id="account-code" inputMode="numeric" autoComplete="one-time-code" value={code} onChange={e => setCode(e.target.value)} placeholder="Enter the email code" style={inputStyle} /><button disabled={busy} className="add-button" style={{ marginTop: 15, width: "100%" }}>{busy ? "VERIFYING..." : "VERIFY AND VIEW ORDERS"}</button><button type="button" onClick={() => { setCodeSent(false); setCode(""); setMessage(""); }} style={{ marginTop: 12, border: 0, background: "transparent", textDecoration: "underline", cursor: "pointer" }}>Change email address</button></>}
           {message && <p role="status" style={{ color: message.startsWith("We sent") ? "#16804a" : "#b42318", marginTop: 12, lineHeight: 1.6 }}>{message}</p>}
         </form>}
 
-        {signedIn && orders.length === 0 && <div style={{ background: "white", padding: 28, borderRadius: 12 }}><h2>No orders found for this phone number.</h2><p style={{ color: "#666", marginTop: 8 }}>Use the same phone number you entered at checkout. New orders will appear here after checkout.</p><Link href="/#shop" className="add-button" style={{ display: "inline-block", marginTop: 18, textDecoration: "none" }}>SHOP THE COLLECTION</Link></div>}
+        {signedIn && orders.length === 0 && <div style={{ background: "white", padding: 28, borderRadius: 12 }}><h2>No orders found for this email address.</h2><p style={{ color: "#666", marginTop: 8 }}>Use the same email address you entered at checkout. New orders will appear here after checkout.</p><Link href="/#shop" className="add-button" style={{ display: "inline-block", marginTop: 18, textDecoration: "none" }}>SHOP THE COLLECTION</Link></div>}
 
         {signedIn && orders.length > 0 && <div style={{ display: "grid", gap: 16 }}>{orders.map(order => {
           const currentStep = order.status === "Awaiting payment review" ? 0 : statusSteps.indexOf(order.status);
