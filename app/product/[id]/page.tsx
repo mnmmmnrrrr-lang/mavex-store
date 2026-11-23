@@ -779,7 +779,14 @@ function ProductContent() {
           </button>
 
           {message && (
-            <p style={{ color: message.includes("ADDED") ? "#27834b" : "#c00", fontSize: 13 }}>{message}</p>
+            message.includes("ADDED TO YOUR BAG") ? (
+              <div role="status" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10, marginTop: 12, padding: 12, border: "1px solid #9bc9a9", borderRadius: 6, background: "#f1fbf4" }}>
+                <span style={{ color: "#20743b", fontSize: 13, fontWeight: 700 }}>{message}</span>
+                <Link href="/checkout" style={{ display: "inline-block", padding: "10px 13px", background: "#111", color: "#fff", textDecoration: "none", fontSize: 11, fontWeight: 800, letterSpacing: 0.5 }}>GO TO CHECKOUT →</Link>
+              </div>
+            ) : (
+              <p role="status" style={{ color: "#c00", fontSize: 13, marginTop: 12 }}>{message}</p>
+            )
           )}
 
           <div style={{ marginTop: 28 }}>
