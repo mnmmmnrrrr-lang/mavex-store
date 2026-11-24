@@ -893,18 +893,6 @@ function ProductContent() {
         </section>
       </div>
 
-      <section dir="rtl" style={{ maxWidth: 1150, margin: "30px auto", padding: "25px 0", borderTop: "1px solid #eee" }}>
-        <h2 style={{ fontSize: 22, marginBottom: 18 }}>Customer Reviews ({comments.length})</h2>
-        {comments.length === 0 ? <p style={{ color: "#777", marginBottom: 20 }}>No reviews yet. Share your thoughts about this product.</p> : <div style={{ display: "grid", gap: 10, marginBottom: 24 }}>{comments.map(comment => <article key={comment.id} style={{ background: "#f8f8f8", padding: 15, borderRadius: 8 }}><strong>{comment.name}</strong><span style={{ color: "#c78521", marginInlineStart: 10 }}>{"★".repeat(comment.rating)}{"☆".repeat(5-comment.rating)}</span><p style={{ marginTop: 8, lineHeight: 1.7 }}>{comment.message}</p>{comment.reply && <p style={{ marginTop: 8, color: "#555", fontSize: 12 }}>MAVEX reply: {comment.reply}</p>}</article>)}</div>}
-        <form onSubmit={submitComment} style={{ display: "grid", gap: 10, maxWidth: 620 }}>
-          <label>Your name<input required maxLength={60} value={commentName} onChange={e => setCommentName(e.target.value)} style={{ display: "block", width: "100%", marginTop: 6, padding: 12, border: "1px solid #ddd", borderRadius: 6 }} /></label>
-          <label>Your rating<select value={commentRating} onChange={e => setCommentRating(Number(e.target.value))} style={{ display: "block", marginTop: 6, padding: 11, border: "1px solid #ddd", borderRadius: 6 }}>{[5,4,3,2,1].map(n => <option key={n} value={n}>{"★".repeat(n)} ({n}/5)</option>)}</select></label>
-          <label>Your review<textarea required minLength={5} maxLength={800} rows={4} value={commentText} onChange={e => setCommentText(e.target.value)} style={{ display: "block", width: "100%", marginTop: 6, padding: 12, border: "1px solid #ddd", borderRadius: 6, resize: "vertical" }} /></label>
-          <button disabled={commentBusy} className="add-button" style={{ justifySelf: "start", borderRadius: 6 }}>{commentBusy ? "SUBMITTING..." : "SUBMIT REVIEW"}</button>
-          {commentNotice && <p role="status" style={{ color: commentNotice.includes("Thank you") ? "#16804a" : "#b42318" }}>{commentNotice}</p>}
-        </form>
-      </section>
-
       {relatedProducts.length > 0 && (
         <section dir="ltr" style={{ maxWidth: 1150, margin: "30px auto", padding: "28px 0 40px", borderTop: "1px solid #eee" }}>
           <p style={{ color: "#999", fontSize: 11, fontWeight: 800, letterSpacing: 2, marginBottom: 8 }}>DISCOVER MORE MAVEX</p>
@@ -941,6 +929,18 @@ function ProductContent() {
           </div>
         </section>
       )}
+
+      <section dir="rtl" style={{ maxWidth: 1150, margin: "30px auto", padding: "25px 0", borderTop: "1px solid #eee" }}>
+        <h2 style={{ fontSize: 22, marginBottom: 18 }}>Customer Reviews ({comments.length})</h2>
+        {comments.length === 0 ? <p style={{ color: "#777", marginBottom: 20 }}>No reviews yet. Share your thoughts about this product.</p> : <div style={{ display: "grid", gap: 10, marginBottom: 24 }}>{comments.map(comment => <article key={comment.id} style={{ background: "#f8f8f8", padding: 15, borderRadius: 8 }}><strong>{comment.name}</strong><span style={{ color: "#c78521", marginInlineStart: 10 }}>{"★".repeat(comment.rating)}{"☆".repeat(5-comment.rating)}</span><p style={{ marginTop: 8, lineHeight: 1.7 }}>{comment.message}</p>{comment.reply && <p style={{ marginTop: 8, color: "#555", fontSize: 12 }}>MAVEX reply: {comment.reply}</p>}</article>)}</div>}
+        <form onSubmit={submitComment} style={{ display: "grid", gap: 10, maxWidth: 620 }}>
+          <label>Your name<input required maxLength={60} value={commentName} onChange={e => setCommentName(e.target.value)} style={{ display: "block", width: "100%", marginTop: 6, padding: 12, border: "1px solid #ddd", borderRadius: 6 }} /></label>
+          <label>Your rating<select value={commentRating} onChange={e => setCommentRating(Number(e.target.value))} style={{ display: "block", marginTop: 6, padding: 11, border: "1px solid #ddd", borderRadius: 6 }}>{[5,4,3,2,1].map(n => <option key={n} value={n}>{"★".repeat(n)} ({n}/5)</option>)}</select></label>
+          <label>Your review<textarea required minLength={5} maxLength={800} rows={4} value={commentText} onChange={e => setCommentText(e.target.value)} style={{ display: "block", width: "100%", marginTop: 6, padding: 12, border: "1px solid #ddd", borderRadius: 6, resize: "vertical" }} /></label>
+          <button disabled={commentBusy} className="add-button" style={{ justifySelf: "start", borderRadius: 6 }}>{commentBusy ? "SUBMITTING..." : "SUBMIT REVIEW"}</button>
+          {commentNotice && <p role="status" style={{ color: commentNotice.includes("Thank you") ? "#16804a" : "#b42318" }}>{commentNotice}</p>}
+        </form>
+      </section>
 
       <style jsx>{`
         @media (max-width: 700px) {
