@@ -65,12 +65,12 @@ button {
 }
 
 .hero {
-  min-height: 520px;
+  min-height: 440px;
   background: #111;
   color: white;
   display: flex;
   align-items: center;
-  padding: 50px 9%;
+  padding: 30px 9%;
 }
 
 .hero-content > p:first-child,
@@ -96,6 +96,10 @@ button {
   color: #f890c8;
 }
 
+.hero h2 {
+  font-size: clamp(55px, 8vw, 95px);
+}
+
 .hero h2 em {
   font-style: normal;
   color: #f890c8;
@@ -117,6 +121,27 @@ button {
   font-size: 12px;
   font-weight: 800;
   transition: .2s;
+}
+
+.hero-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.hero-bag-button {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border: 1px solid #f890c8;
+  color: #f890c8;
+  transition: .2s;
+}
+
+.hero-bag-button:hover {
+  background: #f890c8;
+  color: #111;
 }
 
 .shop-button:hover {
@@ -367,12 +392,17 @@ footer small {
   }
 
   .hero {
-    min-height: 410px;
-    padding: 35px 6%;
+    min-height: 350px;
+    padding: 24px 6%;
   }
 
   .hero h2 {
-    font-size: clamp(48px, 13vw, 75px);
+    font-size: clamp(42px, 11vw, 64px);
+  }
+
+  .hero-bag-button {
+    width: 48px;
+    height: 48px;
   }
 
   .products {

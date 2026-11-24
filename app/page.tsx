@@ -75,7 +75,15 @@ export default function Home() {
           <p>PREMIUM STREETWEAR</p>
           <h2>NOT JUST<br />CLOTHING<span>.</span><br /><em>YOUR IDENTITY.</em></h2>
           <p>EXPRESS YOURSELF. WEAR MAVEX.</p>
-          <a href="#shop" className="shop-button">EXPLORE COLLECTION ↗</a>
+          <div className="hero-actions">
+            <a href="#shop" className="shop-button">SHOPPING NOW</a>
+            <a href="/cart" className="hero-bag-button" aria-label="Open shopping bag" title="Shopping bag">
+              <svg viewBox="0 0 24 24" width="23" height="23" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M5 8.5h14l1 12H4l1-12Z" />
+                <path d="M8.5 8.5V6.8a3.5 3.5 0 0 1 7 0v1.7" />
+              </svg>
+            </a>
+          </div>
         </div>
       </section>
 
