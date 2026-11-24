@@ -37,6 +37,27 @@ type OperationsData = {
 type ProductMediaKind = "image" | "video";
 type UploadedProductMedia = { kind: ProductMediaKind; path: string };
 
+async function optimizeProductImage(file: File): Promise<File> {
+  try {
+    const bitmap = await createImageBitmap(file);
+    const scale = Math.min(1, 1200 / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+    const context = canvas.getContext("2d");
+    if (!context) return file;
+    context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    bitmap.close();
+
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/webp", 0.86));
+    if (!blob) return file;
+    const baseName = file.name.replace(/\.[^.]+$/, "") || "product-image";
+    return new File([blob], `${baseName}.webp`, { type: "image/webp", lastModified: file.lastModified });
+  } catch {
+    return file;
+  }
+}
+
 const sizes = ["XS", "S", "M", "L", "XL", "XXL"];
 const standardMeasurements: Record<string, { label: string; width: string; length: string }> = {
   XS: { label: "XS", width: "54", length: "70" },
@@ -75,10 +96,11 @@ async function fetchAdminCatalog(): Promise<AdminProduct[] | null> {
 }
 
 async function uploadProductMedia(file: File, kind: ProductMediaKind): Promise<UploadedProductMedia> {
+  const uploadFile = kind === "image" ? await optimizeProductImage(file) : file;
   const signingResponse = await fetch("/api/admin/product-media-upload", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ kind, contentType: file.type }),
+    body: JSON.stringify({ kind, contentType: uploadFile.type }),
   });
   const signingResult = await signingResponse.json() as { path?: string; token?: string; error?: string };
   if (!signingResponse.ok || !signingResult.path || !signingResult.token) {
@@ -89,8 +111,8 @@ async function uploadProductMedia(file: File, kind: ProductMediaKind): Promise<U
   const { error } = await supabase.storage.from(bucket).uploadToSignedUrl(
     signingResult.path,
     signingResult.token,
-    file,
-    { contentType: file.type, upsert: false },
+    uploadFile,
+    { contentType: uploadFile.type, upsert: false },
   );
   if (error) throw new Error(`Could not upload the product ${kind}: ${error.message}`);
   return { kind, path: signingResult.path };

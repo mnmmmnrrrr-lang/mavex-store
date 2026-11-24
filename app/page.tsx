@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { localProducts } from "@/lib/catalog";
-import { supabase } from "@/lib/supabase";
 
 type Product = {
   id: string;
@@ -24,7 +23,7 @@ const fallbackImages = [
 ];
 
 export default function Home() {
-  const [products, setProducts] = useState<Product[]>([]);
+  const [products, setProducts] = useState<Product[]>(localProducts);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
 
@@ -33,25 +32,13 @@ export default function Home() {
 
     async function loadProducts() {
       try {
-        const [catalogResponse, stateResponse] = await Promise.all([
-          fetch("/api/catalog", { cache: "no-store" }),
-          fetch("/api/catalog/state", { cache: "no-store" }),
-        ]);
-        const catalog = catalogResponse.ok ? await catalogResponse.json() as Product[] : localProducts;
-        const state = stateResponse.ok ? await stateResponse.json() as { deletedIds: string[]; overrides: Record<string, Product> } : { deletedIds: [], overrides: {} };
-        const { data, error } = await supabase
-          .from("products")
-          .select("id, name, price, compare_at_price, product_images(image_url, alt_text, sort_order)")
-          .eq("status", "active");
-        if (error) console.error("Could not load database products:", error.message);
-
-        const deleted = new Set(state.deletedIds || []);
-        const merged = new Map<string, Product>();
-        for (const product of [...catalog, ...((data || []) as unknown as Product[])]) {
-          if (deleted.has(product.id)) continue;
-          merged.set(product.id, state.overrides?.[product.id] ? { ...product, ...state.overrides[product.id] } : product);
+        const catalogResponse = await fetch("/api/catalog");
+        if (!catalogResponse.ok) throw new Error("Could not load the collection.");
+        const catalog = await catalogResponse.json() as Product[];
+        if (!cancelled) {
+          setProducts(catalog);
+          setLoadError(false);
         }
-        if (!cancelled) setProducts([...merged.values()]);
       } catch {
         if (!cancelled) {
           setProducts(localProducts);
@@ -106,7 +93,7 @@ export default function Home() {
             return (
               <div className="product-card" key={product.id}>
                 <a href={"/product/" + product.id} style={{ color: "inherit", textDecoration: "none" }}>
-                  <img className="product-image" src={image} alt={product.product_images[0]?.alt_text || product.name} />
+                  <img className="product-image" src={image} alt={product.product_images[0]?.alt_text || product.name} loading="lazy" decoding="async" />
                   <h3>{product.name}</h3>
                 </a>
                 <p>

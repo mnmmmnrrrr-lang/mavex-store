@@ -103,7 +103,7 @@ function ProductContent() {
       setError("");
 
       try {
-        const response = await fetch('/api/catalog/' + encodeURIComponent(productId), { cache: 'no-store' });
+        const response = await fetch('/api/catalog/' + encodeURIComponent(productId));
         let item: Product | null = response.ok ? await response.json() as Product : null;
 
         if (!item) {
@@ -435,6 +435,9 @@ function ProductContent() {
                 <img
                   src={activeMedia.src}
                   alt={product.name}
+                  loading="eager"
+                  fetchPriority="high"
+                  decoding="async"
                   style={{ width: "100%", height: "100%", objectFit: "cover" }}
                 />
               )
@@ -517,6 +520,8 @@ function ProductContent() {
                     <img
                       src={media.src}
                       alt={`Product view ${index + 1}`}
+                      loading="lazy"
+                      decoding="async"
                       style={{ width: "100%", height: "100%", objectFit: "cover" }}
                     />
                   )}

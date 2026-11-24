@@ -432,7 +432,7 @@ export default function CheckoutPage() {
               gap: 12,
               marginBottom: 16
             }}>
-              <img src={item.image} alt={item.name}
+              <img src={item.image} alt={item.name} loading="lazy" decoding="async"
                 style={{
                   width: 65,
                   height: 75,

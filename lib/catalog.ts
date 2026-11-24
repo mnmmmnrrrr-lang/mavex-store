@@ -21,7 +21,7 @@ export const localProducts = [
     compare_at_price: 1000,
     product_images: [
       {
-        image_url: "/mavex-products/navy-logo-hoodie.png",
+        image_url: "/mavex-products/navy-logo-hoodie.webp",
         alt_text: "Navy MAVEX logo hoodie",
         sort_order: 0,
       },
@@ -37,7 +37,7 @@ export const localProducts = [
     compare_at_price: 1000,
     product_images: [
       {
-        image_url: "/mavex-products/navy-logo-joggers.png",
+        image_url: "/mavex-products/navy-logo-joggers.webp",
         alt_text: "Navy MAVEX logo joggers",
         sort_order: 0,
       },
@@ -53,7 +53,7 @@ export const localProducts = [
     compare_at_price: 1000,
     product_images: [
       {
-        image_url: "/mavex-products/grey-logo-hoodie.png",
+        image_url: "/mavex-products/grey-logo-hoodie.webp",
         alt_text: "Grey MAVEX hoodie with DTF and embroidered logos",
         sort_order: 0,
       },
@@ -69,7 +69,7 @@ export const localProducts = [
     compare_at_price: 1000,
     product_images: [
       {
-        image_url: "/mavex-products/burgundy-logo-hoodie.png",
+        image_url: "/mavex-products/burgundy-logo-hoodie.webp",
         alt_text: "Burgundy MAVEX logo hoodie",
         sort_order: 0,
       },
