@@ -26,6 +26,12 @@ export default function Home() {
   const [products, setProducts] = useState<Product[]>(localProducts);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+
+  const searchQuery = searchTerm.trim().toLocaleLowerCase();
+  const searchResults = searchQuery
+    ? products.filter((product) => product.name.toLocaleLowerCase().includes(searchQuery)).slice(0, 5)
+    : [];
 
   useEffect(() => {
     let cancelled = false;
@@ -67,6 +73,39 @@ export default function Home() {
           <a href="#about">ABOUT</a>
           <a href="/account">MY ORDERS</a>
         </nav>
+        <div className="navbar-search">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
+            <circle cx="10.8" cy="10.8" r="6.8" />
+            <path d="m16 16 4.2 4.2" />
+          </svg>
+          <input
+            type="search"
+            value={searchTerm}
+            onChange={(event) => setSearchTerm(event.target.value)}
+            placeholder="Search products"
+            aria-label="Search products"
+            aria-expanded={Boolean(searchQuery)}
+            aria-controls="navbar-search-results"
+          />
+          {searchQuery && (
+            <div className="navbar-search-results" id="navbar-search-results" role="listbox" aria-label="Product search results">
+              {searchResults.length > 0 ? searchResults.map((product) => {
+                const productImage = product.product_images[0]?.image_url || fallbackImages[products.indexOf(product) % fallbackImages.length];
+                return (
+                  <a href={`/product/${product.id}`} className="navbar-search-result" role="option" aria-selected="false" key={product.id}>
+                    <img src={productImage} alt="" loading="lazy" decoding="async" />
+                    <span className="navbar-search-result-copy">
+                      <strong>{product.name}</strong>
+                      <small>EGP {Number(product.price).toLocaleString("en-EG")}</small>
+                    </span>
+                  </a>
+                );
+              }) : (
+                <p className="navbar-search-empty">{loading ? "Loading products…" : "No products found"}</p>
+              )}
+            </div>
+          )}
+        </div>
         <a href="/cart" className="navbar-bag" aria-label="Shopping bag">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <path d="M5 8.5h14l1 12H4l1-12Z" />
@@ -83,12 +122,6 @@ export default function Home() {
           <p>EXPRESS YOURSELF. WEAR MAVEX.</p>
           <div className="hero-actions">
             <a href="#shop" className="shop-button">SHOPPING NOW</a>
-            <a href="/cart" className="hero-bag-button" aria-label="Open shopping bag" title="Shopping bag">
-              <svg viewBox="0 0 24 24" width="23" height="23" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <path d="M5 8.5h14l1 12H4l1-12Z" />
-                <path d="M8.5 8.5V6.8a3.5 3.5 0 0 1 7 0v1.7" />
-              </svg>
-            </a>
           </div>
         </div>
       </section>
