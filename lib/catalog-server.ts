@@ -4,12 +4,13 @@ import { CatalogProduct } from "@/lib/admin-store";
 import { getCatalogOverlay } from "@/lib/store-db";
 import { getSupabaseAdmin, hasSupabaseAdmin } from "@/lib/supabase-admin";
 
-export type StorefrontProduct = Pick<CatalogProduct, "id" | "name" | "price" | "compare_at_price" | "product_images">;
+export type StorefrontProduct = Pick<CatalogProduct, "id" | "name" | "description" | "price" | "compare_at_price" | "product_images">;
 
 function toStorefrontProduct(product: Partial<CatalogProduct> & Pick<CatalogProduct, "id" | "name" | "price">): StorefrontProduct {
   return {
     id: product.id,
     name: product.name,
+    description: product.description ?? null,
     price: product.price,
     compare_at_price: product.compare_at_price ?? null,
     product_images: product.product_images || [],
@@ -21,7 +22,7 @@ export async function getStorefrontProducts(): Promise<StorefrontProduct[]> {
     getCatalogOverlay(),
     supabase
       .from("products")
-      .select("id, name, price, compare_at_price, product_images(image_url, alt_text, sort_order)")
+      .select("id, name, description, price, compare_at_price, product_images(image_url, alt_text, sort_order)")
       .eq("status", "active"),
   ]);
   if (error) console.error("Could not load database products:", error.message);

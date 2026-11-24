@@ -6,6 +6,7 @@ import { localProducts } from "@/lib/catalog";
 type Product = {
   id: string;
   name: string;
+  description: string | null;
   price: number;
   compare_at_price: number | null;
   product_images: {
@@ -96,7 +97,9 @@ export default function Home() {
                     <img src={productImage} alt="" loading="lazy" decoding="async" />
                     <span className="navbar-search-result-copy">
                       <strong>{product.name}</strong>
-                      <small>DETAILS</small>
+                      {(product.description || product.product_images[0]?.alt_text) && (
+                        <small>{product.description || product.product_images[0]?.alt_text}</small>
+                      )}
                     </span>
                   </a>
                 );
