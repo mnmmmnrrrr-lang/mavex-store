@@ -44,6 +44,13 @@ type CartItem = {
   image: string;
 };
 type ProductComment = { id: string; name: string; rating: number; message: string; date: string; reply?: string };
+type RelatedProduct = {
+  id: string;
+  name: string;
+  price: number;
+  compare_at_price: number | null;
+  product_images: { image_url: string; alt_text: string | null; sort_order: number | null }[];
+};
 
 const colorCodes: Record<string, string> = {
   Black: "#111111",
@@ -89,6 +96,7 @@ function ProductContent() {
     "description"
   );
   const [comments, setComments] = useState<ProductComment[]>([]);
+  const [relatedProducts, setRelatedProducts] = useState<RelatedProduct[]>([]);
   const [commentName, setCommentName] = useState("");
   const [commentText, setCommentText] = useState("");
   const [commentRating, setCommentRating] = useState(5);
@@ -173,6 +181,25 @@ function ProductContent() {
     fetch("/api/products/" + encodeURIComponent(product.id) + "/comments", { cache: "no-store" })
       .then(response => response.ok ? response.json() as Promise<ProductComment[]> : [])
       .then(setComments).catch(() => setComments([]));
+  }, [product]);
+
+  useEffect(() => {
+    if (!product) return;
+    let cancelled = false;
+    const group = /\b(pants?|joggers?|trousers?|shorts?)\b/i.test(product.name) ? "bottoms" : "tops";
+
+    fetch(`/api/catalog/related?exclude=${encodeURIComponent(product.id)}&group=${group}`)
+      .then(response => response.ok ? response.json() as Promise<RelatedProduct[]> : [])
+      .then(items => {
+        if (!cancelled) setRelatedProducts(Array.isArray(items) ? items : []);
+      })
+      .catch(() => {
+        if (!cancelled) setRelatedProducts([]);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [product]);
 
   async function submitComment(event: React.FormEvent<HTMLFormElement>) {
@@ -877,6 +904,43 @@ function ProductContent() {
           {commentNotice && <p role="status" style={{ color: commentNotice.includes("Thank you") ? "#16804a" : "#b42318" }}>{commentNotice}</p>}
         </form>
       </section>
+
+      {relatedProducts.length > 0 && (
+        <section dir="ltr" style={{ maxWidth: 1150, margin: "30px auto", padding: "28px 0 40px", borderTop: "1px solid #eee" }}>
+          <p style={{ color: "#999", fontSize: 11, fontWeight: 800, letterSpacing: 2, marginBottom: 8 }}>DISCOVER MORE MAVEX</p>
+          <h2 style={{ fontSize: 24, marginBottom: 22 }}>YOU MAY ALSO LIKE</h2>
+          <div className="product-grid">
+            {relatedProducts.map((item) => {
+              const image = [...(item.product_images || [])]
+                .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))[0];
+
+              return (
+                <article className="product-card" key={item.id}>
+                  <Link href={`/product/${encodeURIComponent(item.id)}`}>
+                    {image ? (
+                      <img className="product-image" src={image.image_url} alt={image.alt_text || item.name} loading="lazy" decoding="async" />
+                    ) : (
+                      <div className="product-image" style={{ display: "grid", placeItems: "center", color: "#888" }}>MAVEX</div>
+                    )}
+                    <h3>{item.name}</h3>
+                  </Link>
+                  <p>
+                    EGP {Number(item.price).toLocaleString("en-EG")}
+                    {item.compare_at_price && item.compare_at_price > item.price && (
+                      <del style={{ marginInlineStart: 8, color: "#888", fontSize: 11 }}>
+                        EGP {Number(item.compare_at_price).toLocaleString("en-EG")}
+                      </del>
+                    )}
+                  </p>
+                  <Link className="add-button" href={`/product/${encodeURIComponent(item.id)}`} style={{ display: "block", textAlign: "center", textDecoration: "none" }}>
+                    CHOOSE COLOR &amp; SIZE
+                  </Link>
+                </article>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
       <style jsx>{`
         @media (max-width: 700px) {

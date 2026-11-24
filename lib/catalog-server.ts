@@ -38,6 +38,41 @@ export async function getStorefrontProducts(): Promise<StorefrontProduct[]> {
   return [...merged.values()];
 }
 
+export async function getRelatedStorefrontProducts(
+  excludedId: string,
+  group: "tops" | "bottoms",
+  limit = 4
+): Promise<StorefrontProduct[]> {
+  const [state, { data, error }] = await Promise.all([
+    getCatalogOverlay(),
+    supabase
+      .from("products")
+      .select("id, slug, name, price, compare_at_price, product_images(image_url, alt_text, sort_order)")
+      .eq("status", "active")
+      .limit(24),
+  ]);
+  if (error) console.error("Could not load related database products:", error.message);
+
+  const deleted = new Set(state.deletedIds);
+  const merged = new Map<string, CatalogProduct>();
+  for (const product of [...localProducts, ...state.products, ...((data || []) as unknown as CatalogProduct[])]) {
+    if (deleted.has(product.id)) continue;
+    const override = state.overrides[product.id];
+    merged.set(product.id, override ? { ...product, ...override } : product);
+  }
+
+  const candidates = [...merged.values()].filter(
+    (product) => product.id !== excludedId && product.slug !== excludedId
+  );
+  const isBottoms = (product: CatalogProduct) => /\b(pants?|joggers?|trousers?|shorts?)\b/i.test(`${product.name} ${product.slug}`);
+  const sameGroup = candidates.filter((product) => isBottoms(product) === (group === "bottoms"));
+  const otherGroup = candidates.filter((product) => isBottoms(product) !== (group === "bottoms"));
+
+  return [...sameGroup, ...otherGroup]
+    .slice(0, limit)
+    .map((product) => toStorefrontProduct(product));
+}
+
 export async function getCatalogProducts(includeInactive = false): Promise<CatalogProduct[]> {
   const state = await getCatalogOverlay();
   let databaseProducts: CatalogProduct[] = [];
