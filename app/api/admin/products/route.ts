@@ -4,6 +4,7 @@ import { ADMIN_COOKIE, isAdminSessionValid } from "../../../../lib/admin-auth";
 import {
   CatalogProduct,
   makeSlug,
+  parseColorProductLinks,
 } from "../../../../lib/admin-store";
 import { getCatalogProducts } from "../../../../lib/catalog-server";
 import { deleteProductImage, deleteProductVideo, getProductImagePublicUrl, getProductVideoPublicUrl, isProductImagePath, isProductVideoPath, saveCatalogProduct, saveProductImage } from "../../../../lib/store-db";
@@ -92,7 +93,8 @@ function parseProduct(form: FormData) {
   const sizeGuideSizeLabel = String(form.get("sizeGuideSizeLabel") || "SIZE").trim().slice(0, 20);
   const sizeGuideWidthLabel = String(form.get("sizeGuideWidthLabel") || "WIDTH").trim().slice(0, 20);
   const sizeGuideLengthLabel = String(form.get("sizeGuideLengthLabel") || "LENGTH").trim().slice(0, 20);
-  return { name, description, price, compareAtPrice, variants, sizeGuide, sizeGuideTitle, sizeGuideSizeLabel, sizeGuideWidthLabel, sizeGuideLengthLabel };
+  const colorProductLinks = parseColorProductLinks(form.get("colorProductLinks"));
+  return { name, description, price, compareAtPrice, variants, colorProductLinks, sizeGuide, sizeGuideTitle, sizeGuideSizeLabel, sizeGuideWidthLabel, sizeGuideLengthLabel };
 }
 
 function isAuthorized(request: NextRequest) {
@@ -163,6 +165,7 @@ export async function POST(request: NextRequest) {
       size_guide_width_label: fields.sizeGuideWidthLabel,
       size_guide_length_label: fields.sizeGuideLengthLabel,
       product_video_url: uploadedVideoPath ? getProductVideoPublicUrl(uploadedVideoPath) : null,
+      color_product_links: fields.colorProductLinks,
       product_images: productImages,
       product_variants: fields.variants,
     };

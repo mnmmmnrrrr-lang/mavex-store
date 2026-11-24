@@ -26,6 +26,7 @@ type Product = {
   size_guide_width_label?: string;
   size_guide_length_label?: string;
   product_video_url?: string | null;
+  color_product_links?: { color: string; product_id: string }[];
   product_images: {
     image_url: string;
     alt_text: string | null;
@@ -66,6 +67,11 @@ const colorCodes: Record<string, string> = {
   Brown: "#795548",
   Burgundy: "#6b1632",
 };
+
+function getColorCode(color: string) {
+  const entry = Object.entries(colorCodes).find(([name]) => name.toLowerCase() === color.trim().toLowerCase());
+  return entry?.[1] || "#ccc";
+}
 
 const sizeGuide = [
   { size: "XS", label: "XS", width: "54", length: "70" },
@@ -255,6 +261,14 @@ function ProductContent() {
   const sizeGuideWidthLabel = product.size_guide_width_label || (pantsGuide ? "WAIST" : "WIDTH");
   const sizeGuideLengthLabel = product.size_guide_length_label || "LENGTH";
   const colors = [...new Set(variants.map((v) => v.color))];
+  const linkedColorProducts = (product.color_product_links || []).filter((link) =>
+    typeof link.color === "string" &&
+    link.color.trim().length > 0 &&
+    typeof link.product_id === "string" &&
+    link.product_id &&
+    link.product_id !== product.id &&
+    !colors.some((color) => color.toLowerCase() === link.color.trim().toLowerCase())
+  );
 
   const sizes = [
     ...new Set(variants.filter((v) => v.color === color).map((v) => v.size)),
@@ -615,10 +629,27 @@ function ProductContent() {
                   width: 34,
                   height: 34,
                   borderRadius: "50%",
-                  background: colorCodes[item] || "#ccc",
+                  background: getColorCode(item),
                   border:
                     color === item ? "3px solid #F890C8" : "1px solid #ccc",
                   outline: color === item ? "1px solid #111" : "none",
+                  cursor: "pointer",
+                }}
+              />
+            ))}
+            {linkedColorProducts.map((link) => (
+              <Link
+                key={link.product_id}
+                href={`/product/${encodeURIComponent(link.product_id)}`}
+                aria-label={`View ${link.color} color`}
+                title={`View ${link.color}`}
+                style={{
+                  display: "block",
+                  width: 34,
+                  height: 34,
+                  borderRadius: "50%",
+                  background: getColorCode(link.color),
+                  border: "1px solid #ccc",
                   cursor: "pointer",
                 }}
               />

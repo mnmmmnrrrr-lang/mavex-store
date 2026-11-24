@@ -12,10 +12,12 @@ type VariantDraft = {
   price_override: string;
   is_active: boolean;
 };
+type ColorProductLinkDraft = { color: string; product_id: string };
 
 type AdminProduct = {
   id: string;
   slug: string;
+  status?: string;
   name: string;
   description: string | null;
   price: number;
@@ -26,6 +28,7 @@ type AdminProduct = {
   size_guide_width_label?: string;
   size_guide_length_label?: string;
   product_video_url?: string | null;
+  color_product_links?: ColorProductLinkDraft[];
   product_images: { image_url: string; alt_text: string | null; sort_order: number | null }[];
   product_variants: { id: string; color: string; size: string; stock_quantity: number; price_override: number | null; is_active: boolean | null }[];
 };
@@ -129,6 +132,7 @@ export default function AdminPage() {
   const [price, setPrice] = useState("600");
   const [compareAtPrice, setCompareAtPrice] = useState("1000");
   const [variants, setVariants] = useState<VariantDraft[]>(defaultVariants);
+  const [colorProductLinks, setColorProductLinks] = useState<ColorProductLinkDraft[]>([]);
   const [sizeMeasurements, setSizeMeasurements] = useState(standardMeasurements);
   const [sizeGuideTitle, setSizeGuideTitle] = useState("HOODIE");
   const [sizeGuideSizeLabel, setSizeGuideSizeLabel] = useState("SIZE");
@@ -204,6 +208,7 @@ export default function AdminPage() {
     setPrice("600");
     setCompareAtPrice("1000");
     setVariants(defaultVariants());
+    setColorProductLinks([]);
     setSizeMeasurements(standardMeasurements);
     setSizeGuideTitle("HOODIE");
     setSizeGuideSizeLabel("SIZE");
@@ -230,6 +235,10 @@ export default function AdminPage() {
     setSizeGuideLengthLabel(product.size_guide_length_label || "LENGTH");
     setPrice(String(product.price));
     setCompareAtPrice(product.compare_at_price === null ? "" : String(product.compare_at_price));
+    setColorProductLinks((product.color_product_links || []).map((link) => ({
+      color: String(link.color || ""),
+      product_id: String(link.product_id || ""),
+    })));
     setVariants(product.product_variants.map((variant) => ({
       id: variant.id,
       color: variant.color,
@@ -253,6 +262,12 @@ export default function AdminPage() {
   function updateVariant(index: number, field: keyof VariantDraft, value: string | boolean) {
     setVariants((current) => current.map((variant, itemIndex) =>
       itemIndex === index ? { ...variant, [field]: value } : variant
+    ));
+  }
+
+  function updateColorProductLink(index: number, field: keyof ColorProductLinkDraft, value: string) {
+    setColorProductLinks((current) => current.map((link, itemIndex) =>
+      itemIndex === index ? { ...link, [field]: value } : link
     ));
   }
 
@@ -303,6 +318,7 @@ export default function AdminPage() {
     form.set("price", price);
     form.set("compareAtPrice", compareAtPrice);
     form.set("variants", JSON.stringify(variants));
+    form.set("colorProductLinks", JSON.stringify(colorProductLinks));
     form.set("sizeGuideTitle", sizeGuideTitle);
     form.set("sizeGuideSizeLabel", sizeGuideSizeLabel);
     form.set("sizeGuideWidthLabel", sizeGuideWidthLabel);
@@ -475,6 +491,28 @@ export default function AdminPage() {
                     </div>
                   ))}
                 </div>
+              </div>
+
+              <div style={{ marginTop: 18, padding: 14, border: "1px solid #eee", borderRadius: 7 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+                  <div>
+                    <p style={labelStyle}>Other color products</p>
+                    <p style={{ color: "#777", fontSize: 11, marginTop: 4 }}>Choose which product opens when a customer taps each color swatch.</p>
+                  </div>
+                  <button type="button" onClick={() => setColorProductLinks((current) => [...current, { color: "", product_id: "" }])} style={{ border: "1px solid #ddd", background: "#fff", padding: "7px 10px", cursor: "pointer", borderRadius: 4, whiteSpace: "nowrap" }}>+ ADD COLOR</button>
+                </div>
+                {colorProductLinks.length > 0 && <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
+                  {colorProductLinks.map((link, index) => (
+                    <div key={`linked-color-${index}`} style={{ display: "grid", gridTemplateColumns: "minmax(90px, .8fr) minmax(0, 1.5fr) 32px", gap: 7, alignItems: "center" }}>
+                      <input aria-label={`Linked color name ${index + 1}`} required maxLength={40} value={link.color} onChange={(event) => updateColorProductLink(index, "color", event.target.value)} placeholder="Color (e.g. Burgundy)" style={inputStyle} />
+                      <select aria-label={`Product for linked color ${index + 1}`} required value={link.product_id} onChange={(event) => updateColorProductLink(index, "product_id", event.target.value)} style={inputStyle}>
+                        <option value="">Choose product</option>
+                        {products.filter((product) => product.id !== editingId && (!product.status || product.status === "active")).map((product) => <option key={product.id} value={product.id}>{product.name}</option>)}
+                      </select>
+                      <button type="button" aria-label="Remove linked color" onClick={() => setColorProductLinks((current) => current.filter((_, itemIndex) => itemIndex !== index))} style={{ border: 0, background: "transparent", color: "#b42318", fontSize: 20, cursor: "pointer" }}>×</button>
+                    </div>
+                  ))}
+                </div>}
               </div>
 
               <div style={{ marginTop: 18 }}>

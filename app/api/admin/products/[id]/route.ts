@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ADMIN_COOKIE, isAdminSessionValid } from "../../../../../lib/admin-auth";
-import { CatalogProduct } from "../../../../../lib/admin-store";
+import { CatalogProduct, parseColorProductLinks } from "../../../../../lib/admin-store";
 import { getCatalogProduct } from "../../../../../lib/catalog-server";
 import { deleteCatalogProduct, deleteProductImage, deleteProductVideo, getProductImagePublicUrl, getProductVideoPublicUrl, isProductImagePath, isProductVideoPath, saveCatalogProduct, saveProductImage } from "../../../../../lib/store-db";
 
@@ -49,6 +49,10 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     if (!name || name.length > 120) throw new Error("Enter a product name of 120 characters or fewer.");
     if (!Number.isFinite(price) || price <= 0) throw new Error("Enter a valid price.");
     if (compareAtPrice !== null && (!Number.isFinite(compareAtPrice) || compareAtPrice < price)) throw new Error("The original price must be higher than the selling price.");
+    const colorProductLinks = form.has("colorProductLinks")
+      ? parseColorProductLinks(form.get("colorProductLinks"))
+      : current.color_product_links || [];
+    if (colorProductLinks.some((link) => link.product_id === id)) throw new Error("A product cannot link to itself as another color.");
 
     let inputVariants: VariantInput[];
     try {
@@ -110,6 +114,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       size_guide_width_label: sizeGuideWidthLabel,
       size_guide_length_label: sizeGuideLengthLabel,
       product_video_url: current.product_video_url || null,
+      color_product_links: colorProductLinks,
       product_images: current.product_images,
       product_variants: variants,
     };
