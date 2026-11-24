@@ -96,7 +96,7 @@ export default function Home() {
                     <img src={productImage} alt="" loading="lazy" decoding="async" />
                     <span className="navbar-search-result-copy">
                       <strong>{product.name}</strong>
-                      <small>EGP {Number(product.price).toLocaleString("en-EG")}</small>
+                      <small>DETAILS</small>
                     </span>
                   </a>
                 );
