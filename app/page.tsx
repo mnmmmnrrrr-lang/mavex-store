@@ -67,7 +67,13 @@ export default function Home() {
           <a href="#about">ABOUT</a>
           <a href="/account">MY ORDERS</a>
         </nav>
-        <a href="/cart">BAG</a>
+        <a href="/cart" className="navbar-bag" aria-label="Shopping bag">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M5 8.5h14l1 12H4l1-12Z" />
+            <path d="M8.5 8.5V6.8a3.5 3.5 0 0 1 7 0v1.7" />
+          </svg>
+          <span>BAG</span>
+        </a>
       </header>
 
       <section className="hero" id="home">

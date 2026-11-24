@@ -64,6 +64,13 @@ button {
   font-weight: 700;
 }
 
+.navbar .navbar-bag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
 .hero {
   min-height: 440px;
   background: #111;
