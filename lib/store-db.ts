@@ -71,6 +71,67 @@ export async function saveProductImage(productId: string, image: File) {
   return client.storage.from("mavex-product-images").getPublicUrl(path).data.publicUrl;
 }
 
+export const PRODUCT_IMAGE_BUCKET = "mavex-product-images";
+export const PRODUCT_VIDEO_BUCKET = "mavex-product-videos";
+
+const productImageExtensions: Record<string, string> = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+};
+
+const productVideoExtensions: Record<string, string> = {
+  "video/mp4": "mp4",
+  "video/webm": "webm",
+  "video/quicktime": "mov",
+};
+
+export function getProductVideoExtension(contentType: string) {
+  return productVideoExtensions[contentType] || null;
+}
+
+export function getProductImageExtension(contentType: string) {
+  return productImageExtensions[contentType] || null;
+}
+
+export function isProductImagePath(path: string) {
+  return /^product-uploads\/[0-9a-f-]+\.(jpg|png|webp)$/i.test(path);
+}
+
+export function getProductImagePublicUrl(path: string) {
+  if (!isProductImagePath(path)) throw new Error("Invalid product image upload.");
+  return getSupabaseAdmin().storage.from(PRODUCT_IMAGE_BUCKET).getPublicUrl(path).data.publicUrl;
+}
+
+export async function deleteProductImage(path: string) {
+  if (!isProductImagePath(path)) return;
+  const { error } = await getSupabaseAdmin().storage.from(PRODUCT_IMAGE_BUCKET).remove([path]);
+  if (error) throw new Error(`Could not remove the product image: ${error.message}`);
+}
+
+export function isProductVideoPath(path: string) {
+  return /^admin-uploads\/[0-9a-f-]+\.(mp4|webm|mov)$/i.test(path);
+}
+
+export function getProductVideoPublicUrl(path: string) {
+  if (!isProductVideoPath(path)) throw new Error("Invalid product video upload.");
+  return getSupabaseAdmin().storage.from(PRODUCT_VIDEO_BUCKET).getPublicUrl(path).data.publicUrl;
+}
+
+export async function deleteProductVideo(pathOrUrl: string) {
+  let path = pathOrUrl;
+  if (/^https?:\/\//i.test(pathOrUrl)) {
+    const url = new URL(pathOrUrl);
+    const marker = `/storage/v1/object/public/${PRODUCT_VIDEO_BUCKET}/`;
+    const index = url.pathname.indexOf(marker);
+    if (index < 0) return;
+    path = decodeURIComponent(url.pathname.slice(index + marker.length));
+  }
+  if (!isProductVideoPath(path)) return;
+  const { error } = await getSupabaseAdmin().storage.from(PRODUCT_VIDEO_BUCKET).remove([path]);
+  if (error) throw new Error(`Could not remove the product video: ${error.message}`);
+}
+
 export async function savePaymentProof(dataUrl: string, orderId: string) {
   const match = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl);
   if (!match) throw new Error("The payment proof must be a JPG, PNG, or WebP image.");

@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
+import { supabase } from "@/lib/supabase";
 
 type VariantDraft = {
   id: string;
@@ -24,6 +25,7 @@ type AdminProduct = {
   size_guide_size_label?: string;
   size_guide_width_label?: string;
   size_guide_length_label?: string;
+  product_video_url?: string | null;
   product_images: { image_url: string; alt_text: string | null; sort_order: number | null }[];
   product_variants: { id: string; color: string; size: string; stock_quantity: number; price_override: number | null; is_active: boolean | null }[];
 };
@@ -32,6 +34,8 @@ type OperationsData = {
   returns: { id: string; orderId: string; customerName: string; email?: string; phone?: string; issue: string; date: string; status: string }[];
   comments: { id: string; productId: string; productName: string; name: string; rating: number; message: string; date: string; status: string; reply?: string }[];
 };
+type ProductMediaKind = "image" | "video";
+type UploadedProductMedia = { kind: ProductMediaKind; path: string };
 
 const sizes = ["XS", "S", "M", "L", "XL", "XXL"];
 const standardMeasurements: Record<string, { label: string; width: string; length: string }> = {
@@ -69,6 +73,28 @@ async function fetchAdminCatalog(): Promise<AdminProduct[] | null> {
   const result = await response.json() as { products: AdminProduct[] };
   return result.products || [];
 }
+
+async function uploadProductMedia(file: File, kind: ProductMediaKind): Promise<UploadedProductMedia> {
+  const signingResponse = await fetch("/api/admin/product-media-upload", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ kind, contentType: file.type }),
+  });
+  const signingResult = await signingResponse.json() as { path?: string; token?: string; error?: string };
+  if (!signingResponse.ok || !signingResult.path || !signingResult.token) {
+    throw new Error(signingResult.error || "Could not prepare the media upload.");
+  }
+
+  const bucket = kind === "image" ? "mavex-product-images" : "mavex-product-videos";
+  const { error } = await supabase.storage.from(bucket).uploadToSignedUrl(
+    signingResult.path,
+    signingResult.token,
+    file,
+    { contentType: file.type, upsert: false },
+  );
+  if (error) throw new Error(`Could not upload the product ${kind}: ${error.message}`);
+  return { kind, path: signingResult.path };
+}
 export default function AdminPage() {
   const [checkingSession, setCheckingSession] = useState(true);
   const [loggedIn, setLoggedIn] = useState(false);
@@ -87,6 +113,8 @@ export default function AdminPage() {
   const [sizeGuideWidthLabel, setSizeGuideWidthLabel] = useState("WIDTH");
   const [sizeGuideLengthLabel, setSizeGuideLengthLabel] = useState("LENGTH");
   const [images, setImages] = useState<File[]>([]);
+  const [video, setVideo] = useState<File | null>(null);
+  const [removeVideo, setRemoveVideo] = useState(false);
   const [activeTab, setActiveTab] = useState<"products" | "orders" | "returns" | "comments">("products");
   const [operations, setOperations] = useState<OperationsData>({ orders: [], returns: [], comments: [] });
   const [message, setMessage] = useState("");
@@ -160,8 +188,12 @@ export default function AdminPage() {
     setSizeGuideWidthLabel("WIDTH");
     setSizeGuideLengthLabel("LENGTH");
     setImages([]);
+    setVideo(null);
+    setRemoveVideo(false);
     const fileInput = document.querySelector<HTMLInputElement>("#product-images");
     if (fileInput) fileInput.value = "";
+    const videoInput = document.querySelector<HTMLInputElement>("#product-video");
+    if (videoInput) videoInput.value = "";
   }
 
   function editProduct(product: AdminProduct) {
@@ -190,6 +222,8 @@ export default function AdminPage() {
     }
     setSizeMeasurements(guide);
     setImages([]);
+    setVideo(null);
+    setRemoveVideo(false);
     setMessage("");
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -223,6 +257,22 @@ export default function AdminPage() {
       setMessage("A product can have up to 8 photos.");
       return;
     }
+    if (images.some((image) => image.size > 5 * 1024 * 1024)) {
+      setMessage("Each product photo must be 5 MB or smaller.");
+      return;
+    }
+    if (images.some((image) => !["image/jpeg", "image/png", "image/webp"].includes(image.type))) {
+      setMessage("Choose JPG, PNG, or WebP product photos.");
+      return;
+    }
+    if (video && video.size > 30 * 1024 * 1024) {
+      setMessage("The product video must be 30 MB or smaller.");
+      return;
+    }
+    if (video && !["video/mp4", "video/webm", "video/quicktime"].includes(video.type)) {
+      setMessage("Choose an MP4, WebM, or MOV video.");
+      return;
+    }
     setBusy(true);
     setMessage("");
     const form = new FormData();
@@ -243,13 +293,29 @@ export default function AdminPage() {
       width: sizeMeasurements[size]?.width,
       length: sizeMeasurements[size]?.length,
     }))));
-    for (const image of images) form.append("images", image);
+    form.set("removeVideo", removeVideo ? "true" : "false");
 
+    const uploadedMedia: UploadedProductMedia[] = [];
     try {
+      const imagePaths: string[] = [];
+      for (const image of images) {
+        const uploaded = await uploadProductMedia(image, "image");
+        uploadedMedia.push(uploaded);
+        imagePaths.push(uploaded.path);
+      }
+      form.set("productImagePaths", JSON.stringify(imagePaths));
+
+      if (video) {
+        const uploaded = await uploadProductMedia(video, "video");
+        uploadedMedia.push(uploaded);
+        form.set("productVideoPath", uploaded.path);
+      }
+
       const url = editingId ? "/api/admin/products/" + encodeURIComponent(editingId) : "/api/admin/products";
       const response = await fetch(url, { method: editingId ? "PUT" : "POST", body: form });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Could not save the product.");
+      uploadedMedia.length = 0;
       setProducts((current) => {
         const index = current.findIndex((product) => product.id === result.id);
         if (index < 0) return [result, ...current];
@@ -258,6 +324,13 @@ export default function AdminPage() {
       setMessage(editingId ? "Product updated." : "Product added to the store.");
       resetForm();
     } catch (error) {
+      for (const media of uploadedMedia) {
+        await fetch("/api/admin/product-media-upload", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(media),
+        }).catch(() => undefined);
+      }
       setMessage(error instanceof Error ? error.message : "Could not save the product.");
     } finally {
       setBusy(false);
@@ -408,6 +481,12 @@ export default function AdminPage() {
               {editingProduct?.product_images?.length ? <div style={{ display: "flex", gap: 7, overflowX: "auto", margin: "8px 0" }}>{editingProduct.product_images.map((photo, index) => <img key={photo.image_url} src={photo.image_url} alt={`${editingProduct.name} ${index + 1}`} style={{ width: 58, height: 66, objectFit: "cover", borderRadius: 5 }} />)}</div> : null}
               <input id="product-images" type="file" multiple accept="image/png,image/jpeg,image/webp" required={!editingId} onChange={(event) => setImages(Array.from(event.target.files || []))} style={{ ...inputStyle, padding: 9 }} />
               {images.length > 0 && <p style={{ color: "#555", fontSize: 11, marginTop: 6 }}>{images.length} photo(s) selected. They will be added to the existing product photos.</p>}
+
+              <label htmlFor="product-video" style={{ ...labelStyle, marginTop: 18 }}>Product video (optional, MP4/WebM/MOV, up to 30 MB)</label>
+              {editingProduct?.product_video_url && <div style={{ margin: "8px 0" }}>{!removeVideo && <video src={editingProduct.product_video_url} controls playsInline preload="metadata" style={{ display: "block", width: "min(100%, 360px)", maxHeight: 240, background: "#111", borderRadius: 6 }} />}<label style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 8, fontSize: 12 }}><input type="checkbox" checked={removeVideo} onChange={(event) => setRemoveVideo(event.target.checked)} />Remove current video</label></div>}
+              {editingProduct?.product_video_url && removeVideo && <p style={{ color: "#777", fontSize: 11, marginTop: 6 }}>The current video will be removed when you save.</p>}
+              <input id="product-video" type="file" accept="video/mp4,video/webm,video/quicktime" onChange={(event) => { setVideo(event.target.files?.[0] || null); if (event.target.files?.[0]) setRemoveVideo(false); }} style={{ ...inputStyle, padding: 9 }} />
+              {video && <p style={{ color: "#555", fontSize: 11, marginTop: 6 }}>{video.name} selected ({(video.size / (1024 * 1024)).toFixed(1)} MB).</p>}
 
               <div style={{ display: "grid", gridTemplateColumns: editingId ? "1fr 1fr" : "1fr", gap: 10, marginTop: 20 }}>
                 {editingId && <button type="button" onClick={resetForm} style={{ background: "#fff", border: "1px solid #ccc", padding: 15, cursor: "pointer" }}>CANCEL EDIT</button>}

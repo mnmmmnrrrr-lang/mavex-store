@@ -6,7 +6,7 @@ import {
   makeSlug,
 } from "../../../../lib/admin-store";
 import { getCatalogProducts } from "../../../../lib/catalog-server";
-import { saveCatalogProduct, saveProductImage } from "../../../../lib/store-db";
+import { deleteProductImage, deleteProductVideo, getProductImagePublicUrl, getProductVideoPublicUrl, isProductImagePath, isProductVideoPath, saveCatalogProduct, saveProductImage } from "../../../../lib/store-db";
 
 type VariantInput = {
   id?: string;
@@ -99,6 +99,19 @@ function isAuthorized(request: NextRequest) {
   return isAdminSessionValid(request.cookies.get(ADMIN_COOKIE)?.value);
 }
 
+function parseProductImagePaths(form: FormData) {
+  try {
+    const parsed: unknown = JSON.parse(String(form.get("productImagePaths") || "[]"));
+    if (!Array.isArray(parsed) || parsed.some((path) => typeof path !== "string" || !isProductImagePath(path))) {
+      throw new Error("Invalid product image upload.");
+    }
+    return parsed as string[];
+  } catch (error) {
+    if (error instanceof Error && error.message === "Invalid product image upload.") throw error;
+    throw new Error("Invalid product image upload.");
+  }
+}
+
 export async function GET(request: NextRequest) {
   if (!isAuthorized(request)) {
     return NextResponse.json({ error: "Please log in to the admin panel." }, { status: 401 });
@@ -116,18 +129,27 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Please log in to the admin panel." }, { status: 401 });
   }
 
+  let uploadedVideoPath = "";
+  let uploadedImagePaths: string[] = [];
   try {
     const form = await request.formData();
     const fields = parseProduct(form);
+    uploadedImagePaths = parseProductImagePaths(form);
+    uploadedVideoPath = String(form.get("productVideoPath") || "");
+    if (uploadedVideoPath && !isProductVideoPath(uploadedVideoPath)) throw new Error("Invalid product video upload.");
     const images = form.getAll("images").filter((value): value is File => value instanceof File && value.size > 0);
-    if (images.length === 0 || images.length > 8) {
-      return NextResponse.json({ error: "Choose 1 to 8 product photos." }, { status: 400 });
+    if (uploadedImagePaths.length + images.length === 0 || uploadedImagePaths.length + images.length > 8) {
+      throw new Error("Choose 1 to 8 product photos.");
     }
 
     const id = makeSlug(fields.name) + "-" + randomBytes(3).toString("hex");
-    const productImages = await Promise.all(images.map(async (image, index) => ({
-      image_url: await saveProductImage(id, image), alt_text: fields.name, sort_order: index,
+    const legacyImages = await Promise.all(images.map(async (image, index) => ({
+      image_url: await saveProductImage(id, image), alt_text: fields.name, sort_order: uploadedImagePaths.length + index,
     })));
+    const productImages = [
+      ...uploadedImagePaths.map((path, index) => ({ image_url: getProductImagePublicUrl(path), alt_text: fields.name, sort_order: index })),
+      ...legacyImages,
+    ];
     const product: CatalogProduct = {
       id,
       slug: id,
@@ -140,13 +162,18 @@ export async function POST(request: NextRequest) {
       size_guide_size_label: fields.sizeGuideSizeLabel,
       size_guide_width_label: fields.sizeGuideWidthLabel,
       size_guide_length_label: fields.sizeGuideLengthLabel,
+      product_video_url: uploadedVideoPath ? getProductVideoPublicUrl(uploadedVideoPath) : null,
       product_images: productImages,
       product_variants: fields.variants,
     };
 
     await saveCatalogProduct(product);
+    uploadedVideoPath = "";
+    uploadedImagePaths = [];
     return NextResponse.json(product, { status: 201 });
   } catch (error) {
+    if (uploadedVideoPath) await deleteProductVideo(uploadedVideoPath).catch((cleanupError) => console.error("Could not clean up an unsaved product video:", cleanupError));
+    await Promise.all(uploadedImagePaths.map((path) => deleteProductImage(path).catch((cleanupError) => console.error("Could not clean up an unsaved product image:", cleanupError))));
     const message = error instanceof Error ? error.message : "Could not save the product.";
     return NextResponse.json({ error: message }, { status: 400 });
   }

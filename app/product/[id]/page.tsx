@@ -25,6 +25,7 @@ type Product = {
   size_guide_size_label?: string;
   size_guide_width_label?: string;
   size_guide_length_label?: string;
+  product_video_url?: string | null;
   product_images: {
     image_url: string;
     alt_text: string | null;
@@ -184,23 +185,23 @@ function ProductContent() {
     finally { setCommentBusy(false); }
   }
 
-  const imageCount = product?.product_images.length ?? 0;
+  const mediaCount = (product?.product_images.length ?? 0) + (product?.product_video_url ? 1 : 0);
 
   // Keyboard arrows to flip between images
   useEffect(() => {
-    if (imageCount < 2) return;
+    if (mediaCount < 2) return;
 
     function onKey(e: KeyboardEvent) {
       if (e.key === "ArrowRight") {
-        setImageIndex((c) => (c + 1) % imageCount);
+        setImageIndex((c) => (c + 1) % mediaCount);
       } else if (e.key === "ArrowLeft") {
-        setImageIndex((c) => (c - 1 + imageCount) % imageCount);
+        setImageIndex((c) => (c - 1 + mediaCount) % mediaCount);
       }
     }
 
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [imageCount]);
+  }, [mediaCount]);
 
   if (loading) {
     return (
@@ -244,15 +245,20 @@ function ProductContent() {
   const maxQty = Math.max(1, Math.min(stock, 10));
 
   const images = product.product_images.map((img) => img.image_url);
+  const galleryMedia: ({ type: "image"; src: string } | { type: "video"; src: string })[] = [
+    ...images.map((src) => ({ type: "image" as const, src })),
+    ...(product.product_video_url ? [{ type: "video" as const, src: product.product_video_url }] : []),
+  ];
+  const activeMedia = galleryMedia[imageIndex];
 
   const currentPrice = Number(selectedVariant?.price_override ?? product.price);
 
   function goPrev() {
-    setImageIndex((c) => (c - 1 + images.length) % images.length);
+    setImageIndex((c) => (c - 1 + galleryMedia.length) % galleryMedia.length);
   }
 
   function goNext() {
-    setImageIndex((c) => (c + 1) % images.length);
+    setImageIndex((c) => (c + 1) % galleryMedia.length);
   }
 
   function changeColor(newColor: string) {
@@ -401,7 +407,7 @@ function ProductContent() {
               const difference = e.changedTouches[0].clientX - touchStartX;
               setTouchStartX(null);
 
-              if (Math.abs(difference) > 45 && images.length > 1) {
+              if (Math.abs(difference) > 45 && galleryMedia.length > 1) {
                 if (difference < 0) goNext();
                 else goPrev();
               }
@@ -414,16 +420,24 @@ function ProductContent() {
               overflow: "hidden",
             }}
           >
-            {images.length > 0 ? (
-              <img
-                src={images[imageIndex]}
-                alt={product.name}
-                style={{
-                  width: "100%",
-                  height: "100%",
-                  objectFit: "cover",
-                }}
-              />
+            {activeMedia ? (
+              activeMedia.type === "video" ? (
+                <video
+                  key={activeMedia.src}
+                  src={activeMedia.src}
+                  controls
+                  playsInline
+                  preload="metadata"
+                  aria-label={`${product.name} product video`}
+                  style={{ width: "100%", height: "100%", objectFit: "contain", background: "#111" }}
+                />
+              ) : (
+                <img
+                  src={activeMedia.src}
+                  alt={product.name}
+                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                />
+              )
             ) : (
               <div
                 style={{
@@ -437,17 +451,17 @@ function ProductContent() {
               </div>
             )}
 
-            {images.length > 1 && (
+            {galleryMedia.length > 1 && (
               <>
                 <button
-                  aria-label="Previous image"
+                  aria-label="Previous product media"
                   onClick={goPrev}
                   style={{ ...arrowStyle, left: 10 }}
                 >
                   ‹
                 </button>
                 <button
-                  aria-label="Next image"
+                  aria-label="Next product media"
                   onClick={goNext}
                   style={{ ...arrowStyle, right: 10 }}
                 >
@@ -465,13 +479,13 @@ function ProductContent() {
                     letterSpacing: 1,
                   }}
                 >
-                  {imageIndex + 1} / {images.length}
+                  {imageIndex + 1} / {galleryMedia.length}
                 </span>
               </>
             )}
           </div>
 
-          {images.length > 1 && (
+          {galleryMedia.length > 1 && (
             <div
               style={{
                 display: "flex",
@@ -480,9 +494,9 @@ function ProductContent() {
                 marginTop: 12,
               }}
             >
-              {images.map((image, index) => (
+              {galleryMedia.map((media, index) => (
                 <button
-                  key={index}
+                  key={media.src}
                   onClick={() => setImageIndex(index)}
                   style={{
                     border:
@@ -497,15 +511,15 @@ function ProductContent() {
                     cursor: "pointer",
                   }}
                 >
-                  <img
-                    src={image}
-                    alt={`Product view ${index + 1}`}
-                    style={{
-                      width: "100%",
-                      height: "100%",
-                      objectFit: "cover",
-                    }}
-                  />
+                  {media.type === "video" ? (
+                    <span style={{ display: "grid", placeItems: "center", width: "100%", height: "100%", background: "#111", color: "#fff", fontSize: 11, fontWeight: 700 }}>▶ VIDEO</span>
+                  ) : (
+                    <img
+                      src={media.src}
+                      alt={`Product view ${index + 1}`}
+                      style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                    />
+                  )}
                 </button>
               ))}
             </div>

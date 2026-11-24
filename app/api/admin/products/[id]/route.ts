@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { ADMIN_COOKIE, isAdminSessionValid } from "../../../../../lib/admin-auth";
 import { CatalogProduct } from "../../../../../lib/admin-store";
 import { getCatalogProduct } from "../../../../../lib/catalog-server";
-import { deleteCatalogProduct, saveCatalogProduct, saveProductImage } from "../../../../../lib/store-db";
+import { deleteCatalogProduct, deleteProductImage, deleteProductVideo, getProductImagePublicUrl, getProductVideoPublicUrl, isProductImagePath, isProductVideoPath, saveCatalogProduct, saveProductImage } from "../../../../../lib/store-db";
 
 type VariantInput = { id?: string; color?: unknown; size?: unknown; stock_quantity?: unknown; price_override?: unknown; is_active?: unknown };
 type GuideInput = { size?: unknown; label?: unknown; width?: unknown; length?: unknown };
@@ -11,12 +11,28 @@ function isAuthorized(request: NextRequest) {
   return isAdminSessionValid(request.cookies.get(ADMIN_COOKIE)?.value);
 }
 
+function parseProductImagePaths(form: FormData) {
+  try {
+    const parsed: unknown = JSON.parse(String(form.get("productImagePaths") || "[]"));
+    if (!Array.isArray(parsed) || parsed.some((path) => typeof path !== "string" || !isProductImagePath(path))) {
+      throw new Error("Invalid product image upload.");
+    }
+    return parsed as string[];
+  } catch (error) {
+    if (error instanceof Error && error.message === "Invalid product image upload.") throw error;
+    throw new Error("Invalid product image upload.");
+  }
+}
+
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   if (!isAuthorized(request)) return NextResponse.json({ error: "Please log in to the admin panel." }, { status: 401 });
   const { id } = await params;
+  let uploadedVideoPath = "";
+  let uploadedImagePaths: string[] = [];
 
   try {
     const form = await request.formData();
+    uploadedImagePaths = parseProductImagePaths(form);
     let current = await getCatalogProduct(id, true);
     if (!current) {
       try {
@@ -93,20 +109,35 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       size_guide_size_label: sizeGuideSizeLabel,
       size_guide_width_label: sizeGuideWidthLabel,
       size_guide_length_label: sizeGuideLengthLabel,
+      product_video_url: current.product_video_url || null,
       product_images: current.product_images,
       product_variants: variants,
     };
 
+    uploadedVideoPath = String(form.get("productVideoPath") || "");
+    if (uploadedVideoPath && !isProductVideoPath(uploadedVideoPath)) throw new Error("Invalid product video upload.");
+    if (uploadedVideoPath) nextProduct.product_video_url = getProductVideoPublicUrl(uploadedVideoPath);
+    else if (form.get("removeVideo") === "true") nextProduct.product_video_url = null;
+
     const images = form.getAll("images").filter((value): value is File => value instanceof File && value.size > 0);
-    if (images.length > 8 || current.product_images.length + images.length > 8) throw new Error("A product can have up to 8 photos. Remove some before adding more.");
-    if (images.length) {
-      const added = await Promise.all(images.map(async (image, index) => ({ image_url: await saveProductImage(id, image), alt_text: name, sort_order: current!.product_images.length + index })));
-      nextProduct.product_images = [...current.product_images, ...added];
+    const addedImageCount = uploadedImagePaths.length + images.length;
+    if (addedImageCount > 8 || current.product_images.length + addedImageCount > 8) throw new Error("A product can have up to 8 photos. Remove some before adding more.");
+    if (addedImageCount) {
+      const uploadedImages = uploadedImagePaths.map((path, index) => ({ image_url: getProductImagePublicUrl(path), alt_text: name, sort_order: current!.product_images.length + index }));
+      const legacyImages = await Promise.all(images.map(async (image, index) => ({ image_url: await saveProductImage(id, image), alt_text: name, sort_order: current!.product_images.length + uploadedImagePaths.length + index })));
+      nextProduct.product_images = [...current.product_images, ...uploadedImages, ...legacyImages];
     }
 
     await saveCatalogProduct(nextProduct);
+    if (current.product_video_url && current.product_video_url !== nextProduct.product_video_url) {
+      await deleteProductVideo(current.product_video_url).catch((cleanupError) => console.error("Could not remove the replaced product video:", cleanupError));
+    }
+    uploadedVideoPath = "";
+    uploadedImagePaths = [];
     return NextResponse.json(nextProduct);
   } catch (error) {
+    if (uploadedVideoPath) await deleteProductVideo(uploadedVideoPath).catch((cleanupError) => console.error("Could not clean up an unsaved product video:", cleanupError));
+    await Promise.all(uploadedImagePaths.map((path) => deleteProductImage(path).catch((cleanupError) => console.error("Could not clean up an unsaved product image:", cleanupError))));
     const message = error instanceof Error ? error.message : "Could not update the product.";
     return NextResponse.json({ error: message }, { status: 400 });
   }

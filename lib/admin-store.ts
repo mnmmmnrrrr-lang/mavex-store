@@ -12,6 +12,7 @@ export type CatalogProduct = {
   size_guide_size_label?: string;
   size_guide_width_label?: string;
   size_guide_length_label?: string;
+  product_video_url?: string | null;
   product_images: {
     image_url: string;
     alt_text: string | null;
