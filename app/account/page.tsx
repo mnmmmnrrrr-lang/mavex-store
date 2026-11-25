@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { getSupabaseBrowserSession, supabaseBrowser } from "@/lib/supabase-browser";
 
@@ -11,8 +11,6 @@ type CustomerOrder = {
 
 export default function AccountPage() {
   const [email, setEmail] = useState("");
-  const [code, setCode] = useState("");
-  const [codeSent, setCodeSent] = useState(false);
   const [orders, setOrders] = useState<CustomerOrder[]>([]);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
@@ -31,8 +29,6 @@ export default function AccountPage() {
     if (new URLSearchParams(window.location.search).get("authError") === "google") {
       setMessage("Google sign-in could not be completed. Please try again.");
     }
-    const previousEmail = localStorage.getItem("mavex-last-order-email");
-    if (previousEmail) setEmail(previousEmail);
     void getSupabaseBrowserSession().then(async (session) => {
       if (!session) return;
       try {
@@ -47,33 +43,6 @@ export default function AccountPage() {
     });
     return () => { cancelled = true; };
   }, [loadOrders]);
-
-  async function requestCode(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); setMessage("");
-    const normalizedEmail = email.trim().toLowerCase();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) { setMessage("Enter a valid email address."); return; }
-    setBusy(true);
-    try {
-      const { error } = await supabaseBrowser.auth.signInWithOtp({ email: normalizedEmail, options: { shouldCreateUser: true } });
-      if (error) throw error;
-      setEmail(normalizedEmail); setCodeSent(true); setMessage("We sent a verification code to your email.");
-    } catch (error) { setMessage(error instanceof Error ? error.message : "Could not send the verification code."); }
-    finally { setBusy(false); }
-  }
-
-  async function verifyCode(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); setBusy(true); setMessage("");
-    try {
-      const { data, error } = await supabaseBrowser.auth.verifyOtp({ email: email.trim().toLowerCase(), token: code.trim(), type: "email" });
-      if (error) throw error;
-      if (!data.session) throw new Error("The code was accepted, but no session was created. Try again.");
-      await loadOrders(data.session.access_token);
-      const metadata = data.session.user.user_metadata || {};
-      setDisplayName(String(metadata.full_name || metadata.name || ""));
-      setSignedIn(true); setMessage("");
-    } catch (error) { setMessage(error instanceof Error ? error.message : "That code could not be verified."); }
-    finally { setBusy(false); }
-  }
 
   async function signInWithGoogle() {
     setBusy(true);
@@ -91,7 +60,7 @@ export default function AccountPage() {
   }
 
   async function signOut() {
-    await supabaseBrowser.auth.signOut(); setSignedIn(false); setDisplayName(""); setOrders([]); setCodeSent(false); setCode(""); setMessage("");
+    await supabaseBrowser.auth.signOut(); setSignedIn(false); setDisplayName(""); setEmail(""); setOrders([]); setMessage("");
   }
 
   async function cancelOrder(order: CustomerOrder) {
@@ -117,7 +86,6 @@ export default function AccountPage() {
     }
   }
 
-  const inputStyle = { width: "100%", padding: 13, marginTop: 7, border: "1px solid #ddd", borderRadius: 7, color: "#111", background: "#fff", fontSize: 15 };
   const statusSteps = ["Pending confirmation", "Confirmed", "Processing", "Shipped", "Delivered"];
 
   return (
@@ -128,21 +96,17 @@ export default function AccountPage() {
       </header>
       <section style={{ maxWidth: 980, margin: "auto" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "end", gap: 12, flexWrap: "wrap", marginBottom: 22 }}>
-          <div><p style={{ color: "#a54d7e", fontSize: 11, fontWeight: 800, letterSpacing: 2 }}>CUSTOMER ACCOUNT</p><h1 style={{ marginTop: 7, fontSize: 32 }}>My Orders</h1><p style={{ color: "#666", marginTop: 7 }}>Sign in with the email address you used at checkout to see saved orders and delivery status.</p></div>
+          <div><p style={{ color: "#a54d7e", fontSize: 11, fontWeight: 800, letterSpacing: 2 }}>CUSTOMER ACCOUNT</p><h1 style={{ marginTop: 7, fontSize: 32 }}>My Orders</h1><p style={{ color: "#666", marginTop: 7 }}>Sign in with Google to see your saved orders and delivery status.</p></div>
           {signedIn && <div style={{ display: "grid", justifyItems: "end", gap: 6 }}><span style={{ color: "#666", fontSize: 12 }}>{displayName || email}</span><button type="button" onClick={signOut} style={{ border: "1px solid #ddd", padding: "10px 14px", background: "white", borderRadius: 6, cursor: "pointer" }}>SIGN OUT</button></div>}
         </div>
 
-        {!signedIn && <form onSubmit={codeSent ? verifyCode : requestCode} style={{ maxWidth: 520, background: "white", padding: 24, borderRadius: 12, boxShadow: "0 8px 30px #0000000d" }}>
-          {!codeSent ? <>
+        {!signedIn && <div style={{ maxWidth: 520, background: "white", padding: 24, borderRadius: 12, boxShadow: "0 8px 30px #0000000d" }}>
             <button type="button" disabled={busy} onClick={() => void signInWithGoogle()} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 11, width: "100%", minHeight: 48, border: "1px solid #d7d7d7", borderRadius: 7, background: "#fff", color: "#222", fontSize: 14, fontWeight: 700, cursor: busy ? "wait" : "pointer" }}>
               <svg viewBox="0 0 48 48" width="20" height="20" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5Z" transform="translate(0 5)"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.91c-.58 2.96-2.26 5.48-4.76 7.18l7.73 6C44.39 38.03 46.98 31.91 46.98 24.55Z" transform="translate(0 0) scale(.9) translate(3 3)"/><path fill="#FBBC05" d="M10.53 28.59A14.4 14.4 0 0 1 9.75 24c0-1.59.27-3.13.76-4.59l-7.98-6.19A23.9 23.9 0 0 0 0 24c0 3.87.93 7.52 2.56 10.78l7.97-6.19Z" transform="translate(2 0) scale(.9) translate(2.5 3)"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.9-5.8l-7.73-6c-2.14 1.45-4.88 2.3-8.17 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48Z" transform="translate(0 -3) scale(.9) translate(2.6 4.8)"/></svg>
               {busy ? "CONNECTING TO GOOGLE..." : "Continue with Google"}
             </button>
-            <div aria-hidden="true" style={{ display: "flex", alignItems: "center", gap: 12, margin: "20px 0", color: "#888", fontSize: 11, fontWeight: 700, letterSpacing: 1 }}><span style={{ height: 1, flex: 1, background: "#e5e5e5" }} />OR<span style={{ height: 1, flex: 1, background: "#e5e5e5" }} /></div>
-            <label htmlFor="account-email">Email address</label><input id="account-email" type="email" autoComplete="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" style={inputStyle} /><button disabled={busy} className="add-button" style={{ marginTop: 15, width: "100%" }}>{busy ? "SENDING CODE..." : "SEND SIGN-IN CODE"}</button>
-          </> : <><label htmlFor="account-code">Verification code</label><input id="account-code" inputMode="numeric" autoComplete="one-time-code" value={code} onChange={e => setCode(e.target.value)} placeholder="Enter the email code" style={inputStyle} /><button disabled={busy} className="add-button" style={{ marginTop: 15, width: "100%" }}>{busy ? "VERIFYING..." : "VERIFY AND VIEW ORDERS"}</button><button type="button" onClick={() => { setCodeSent(false); setCode(""); setMessage(""); }} style={{ marginTop: 12, border: 0, background: "transparent", textDecoration: "underline", cursor: "pointer" }}>Change email address</button></>}
-          {message && <p role="status" style={{ color: message.startsWith("We sent") ? "#16804a" : "#b42318", marginTop: 12, lineHeight: 1.6 }}>{message}</p>}
-        </form>}
+            {message && <p role="status" style={{ color: "#b42318", marginTop: 12, lineHeight: 1.6 }}>{message}</p>}
+        </div>}
 
         {signedIn && message && <p role="status" style={{ margin: "0 0 16px", color: /cancelled/i.test(message) ? "#16804a" : "#b42318", lineHeight: 1.6 }}>{message}</p>}
 
