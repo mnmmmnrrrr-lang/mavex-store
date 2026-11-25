@@ -6,6 +6,7 @@ import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 
 type VariantDraft = {
+  draftKey: string;
   id: string;
   color: string;
   size: string;
@@ -13,7 +14,8 @@ type VariantDraft = {
   price_override: string;
   is_active: boolean;
 };
-type ColorProductLinkDraft = { color: string; product_id: string };
+type ColorProductLink = { color: string; product_id: string };
+type ColorProductLinkDraft = ColorProductLink & { draftKey: string };
 
 type AdminProduct = {
   id: string;
@@ -29,7 +31,7 @@ type AdminProduct = {
   size_guide_width_label?: string;
   size_guide_length_label?: string;
   product_video_url?: string | null;
-  color_product_links?: ColorProductLinkDraft[];
+  color_product_links?: ColorProductLink[];
   product_images: { image_url: string; alt_text: string | null; sort_order: number | null }[];
   product_variants: { id: string; color: string; size: string; stock_quantity: number; price_override: number | null; is_active: boolean | null }[];
 };
@@ -81,8 +83,75 @@ const inputStyle = {
   fontSize: 13,
 };
 
+const colorAliases: Record<string, string> = {
+  black: "#111111", white: "#f5f5f5", navy: "#1a2542", pink: "#f890c8",
+  grey: "#999999", gray: "#999999", red: "#d32f2f", blue: "#2455a4",
+  beige: "#d8c3a5", green: "#39734b", brown: "#795548", burgundy: "#6b1632",
+  maroon: "#800000", purple: "#7e57c2", violet: "#7e57c2", orange: "#ef6c00",
+  yellow: "#fbc02d", cream: "#fff1d6", ivory: "#fffff0", charcoal: "#36454f",
+  teal: "#008080", turquoise: "#40e0d0", olive: "#808000", mint: "#98ff98",
+  gold: "#d4af37", silver: "#c0c0c0", coral: "#ff7f50", lavender: "#e6e6fa",
+  أسود: "#111111", ابيض: "#f5f5f5", كحلي: "#1a2542", وردي: "#f890c8",
+  رمادي: "#999999", احمر: "#d32f2f", ازرق: "#2455a4", بيج: "#d8c3a5",
+  اخضر: "#39734b", بني: "#795548", نبيتي: "#6b1632", عنابي: "#6b1632",
+  بنفسجي: "#7e57c2", برتقالي: "#ef6c00", اصفر: "#fbc02d", ذهبي: "#d4af37",
+  فضي: "#c0c0c0", كريمي: "#fff1d6", نعناعي: "#98ff98",
+};
+
+function getAdminColorHex(value: string) {
+  const trimmed = value.trim();
+  const hex = /^#?([\da-f]{3}|[\da-f]{6})$/i.exec(trimmed)?.[1];
+  if (hex) {
+    const normalized = hex.length === 3 ? [...hex].map((digit) => digit + digit).join("") : hex;
+    return `#${normalized.toLowerCase()}`;
+  }
+
+  const normalizedName = trimmed
+    .normalize("NFKC")
+    .replace(/[\u064B-\u065F\u0670\u0640]/g, "")
+    .replace(/[أإآ]/g, "ا")
+    .replace(/ى/g, "ي")
+    .toLocaleLowerCase()
+    .replace(/[\s_-]+/g, "");
+  return colorAliases[normalizedName] || "#cccccc";
+}
+
+function newDraftKey(prefix: string) {
+  return `${prefix}-${crypto.randomUUID()}`;
+}
+
+function AdminColorInput({ value, onChange, label, placeholder }: {
+  value: string;
+  onChange: (value: string) => void;
+  label: string;
+  placeholder: string;
+}) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
+      <input
+        aria-label={label}
+        required
+        maxLength={40}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        style={{ ...inputStyle, minWidth: 0, flex: 1 }}
+      />
+      <input
+        aria-label={`Choose ${label.toLowerCase()}`}
+        title="Choose the exact color"
+        type="color"
+        value={getAdminColorHex(value)}
+        onChange={(event) => onChange(event.target.value.toUpperCase())}
+        style={{ width: 38, height: 38, flex: "0 0 38px", padding: 3, border: "1px solid #d9d9d9", borderRadius: "50%", background: "#fff", cursor: "pointer" }}
+      />
+    </div>
+  );
+}
+
 function defaultVariants(): VariantDraft[] {
   return sizes.map((size) => ({
+    draftKey: `default-${size}`,
     id: "",
     color: "Black",
     size,
@@ -237,10 +306,12 @@ export default function AdminPage() {
     setPrice(String(product.price));
     setCompareAtPrice(product.compare_at_price === null ? "" : String(product.compare_at_price));
     setColorProductLinks((product.color_product_links || []).map((link) => ({
+      draftKey: newDraftKey("linked-color"),
       color: String(link.color || ""),
       product_id: String(link.product_id || ""),
     })));
     setVariants(product.product_variants.map((variant) => ({
+      draftKey: newDraftKey("variant"),
       id: variant.id,
       color: variant.color,
       size: variant.size,
@@ -260,15 +331,15 @@ export default function AdminPage() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  function updateVariant(index: number, field: keyof VariantDraft, value: string | boolean) {
-    setVariants((current) => current.map((variant, itemIndex) =>
-      itemIndex === index ? { ...variant, [field]: value } : variant
+  function updateVariant(rowKey: string, field: keyof VariantDraft, value: string | boolean) {
+    setVariants((current) => current.map((variant) =>
+      (variant.id || variant.draftKey) === rowKey ? { ...variant, [field]: value } : variant
     ));
   }
 
-  function updateColorProductLink(index: number, field: keyof ColorProductLinkDraft, value: string) {
-    setColorProductLinks((current) => current.map((link, itemIndex) =>
-      itemIndex === index ? { ...link, [field]: value } : link
+  function updateColorProductLink(rowKey: string, field: keyof ColorProductLinkDraft, value: string) {
+    setColorProductLinks((current) => current.map((link) =>
+      link.draftKey === rowKey ? { ...link, [field]: value } : link
     ));
   }
 
@@ -276,6 +347,7 @@ export default function AdminPage() {
     const used = new Set(variants.map((variant) => variant.size));
     const size = sizes.find((item) => !used.has(item)) || "S";
     setVariants((current) => [...current, {
+      draftKey: newDraftKey("variant"),
       id: "",
       color: current[0]?.color || "Black",
       size,
@@ -318,8 +390,15 @@ export default function AdminPage() {
     form.set("description", description);
     form.set("price", price);
     form.set("compareAtPrice", compareAtPrice);
-    form.set("variants", JSON.stringify(variants));
-    form.set("colorProductLinks", JSON.stringify(colorProductLinks));
+    form.set("variants", JSON.stringify(variants.map((variant) => ({
+      id: variant.id,
+      color: variant.color,
+      size: variant.size,
+      stock_quantity: variant.stock_quantity,
+      price_override: variant.price_override,
+      is_active: variant.is_active,
+    }))));
+    form.set("colorProductLinks", JSON.stringify(colorProductLinks.map((link) => ({ color: link.color, product_id: link.product_id }))));
     form.set("sizeGuideTitle", sizeGuideTitle);
     form.set("sizeGuideSizeLabel", sizeGuideSizeLabel);
     form.set("sizeGuideWidthLabel", sizeGuideWidthLabel);
@@ -481,16 +560,17 @@ export default function AdminPage() {
                   <button type="button" onClick={addVariant} style={{ border: "1px solid #ddd", background: "#fff", padding: "6px 10px", cursor: "pointer", borderRadius: 4 }}>+ ADD SIZE</button>
                 </div>
                 <div style={{ display: "grid", gap: 8 }}>
-                  {variants.map((variant, index) => (
-                    <div key={variant.id || "new-" + index} className="admin-variant-row" style={{ display: "grid", gridTemplateColumns: "1.2fr .7fr .8fr .8fr .7fr 34px", gap: 6, alignItems: "center", padding: "8px 0", borderTop: "1px solid #eee" }}>
-                      <input aria-label={"Color for variant " + (index + 1)} required value={variant.color} onChange={(event) => updateVariant(index, "color", event.target.value)} placeholder="Color" style={inputStyle} />
-                      <select aria-label={"Size for variant " + (index + 1)} value={variant.size} onChange={(event) => updateVariant(index, "size", event.target.value)} style={inputStyle}>{sizes.map((size) => <option key={size}>{size}</option>)}</select>
-                      <input aria-label={"Stock for variant " + (index + 1)} required type="number" min="0" step="1" value={variant.stock_quantity} onChange={(event) => updateVariant(index, "stock_quantity", event.target.value)} title="Stock" style={inputStyle} />
-                      <input aria-label={"Price override for variant " + (index + 1)} type="number" min="1" step="1" value={variant.price_override} onChange={(event) => updateVariant(index, "price_override", event.target.value)} placeholder="Price" title="Optional price override" style={inputStyle} />
-                      <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10 }}><input type="checkbox" checked={variant.is_active} onChange={(event) => updateVariant(index, "is_active", event.target.checked)} />Live</label>
-                      <button type="button" aria-label="Remove variant" onClick={() => setVariants((current) => current.filter((_, itemIndex) => itemIndex !== index))} style={{ border: 0, background: "transparent", color: "#b42318", fontSize: 20, cursor: "pointer" }}>×</button>
+                  {variants.map((variant, index) => {
+                    const rowKey = variant.id || variant.draftKey;
+                    return <div key={rowKey} className="admin-variant-row" style={{ display: "grid", gridTemplateColumns: "1.2fr .7fr .8fr .8fr .7fr 34px", gap: 6, alignItems: "center", padding: "8px 0", borderTop: "1px solid #eee" }}>
+                      <AdminColorInput label={`Color for variant ${index + 1}`} value={variant.color} onChange={(value) => updateVariant(rowKey, "color", value)} placeholder="Color or #HEX" />
+                      <select aria-label={"Size for variant " + (index + 1)} value={variant.size} onChange={(event) => updateVariant(rowKey, "size", event.target.value)} style={inputStyle}>{sizes.map((size) => <option key={size}>{size}</option>)}</select>
+                      <input aria-label={"Stock for variant " + (index + 1)} required type="number" min="0" step="1" value={variant.stock_quantity} onChange={(event) => updateVariant(rowKey, "stock_quantity", event.target.value)} title="Stock" style={inputStyle} />
+                      <input aria-label={"Price override for variant " + (index + 1)} type="number" min="1" step="1" value={variant.price_override} onChange={(event) => updateVariant(rowKey, "price_override", event.target.value)} placeholder="Price" title="Optional price override" style={inputStyle} />
+                      <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10 }}><input type="checkbox" checked={variant.is_active} onChange={(event) => updateVariant(rowKey, "is_active", event.target.checked)} />Live</label>
+                      <button type="button" aria-label="Remove variant" onClick={() => setVariants((current) => current.filter((item) => (item.id || item.draftKey) !== rowKey))} style={{ border: 0, background: "transparent", color: "#b42318", fontSize: 20, cursor: "pointer" }}>×</button>
                     </div>
-                  ))}
+                  })}
                 </div>
               </div>
 
@@ -500,17 +580,17 @@ export default function AdminPage() {
                     <p style={labelStyle}>Other color products</p>
                     <p style={{ color: "#777", fontSize: 11, marginTop: 4 }}>Choose which product opens when a customer taps each color swatch.</p>
                   </div>
-                  <button type="button" onClick={() => setColorProductLinks((current) => [...current, { color: "", product_id: "" }])} style={{ border: "1px solid #ddd", background: "#fff", padding: "7px 10px", cursor: "pointer", borderRadius: 4, whiteSpace: "nowrap" }}>+ ADD COLOR</button>
+                  <button type="button" onClick={() => setColorProductLinks((current) => [...current, { draftKey: newDraftKey("linked-color"), color: "", product_id: "" }])} style={{ border: "1px solid #ddd", background: "#fff", padding: "7px 10px", cursor: "pointer", borderRadius: 4, whiteSpace: "nowrap" }}>+ ADD COLOR</button>
                 </div>
                 {colorProductLinks.length > 0 && <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
                   {colorProductLinks.map((link, index) => (
-                    <div key={`linked-color-${index}`} style={{ display: "grid", gridTemplateColumns: "minmax(90px, .8fr) minmax(0, 1.5fr) 32px", gap: 7, alignItems: "center" }}>
-                      <input aria-label={`Linked color name ${index + 1}`} required maxLength={40} value={link.color} onChange={(event) => updateColorProductLink(index, "color", event.target.value)} placeholder="Color (e.g. Burgundy)" style={inputStyle} />
-                      <select aria-label={`Product for linked color ${index + 1}`} required value={link.product_id} onChange={(event) => updateColorProductLink(index, "product_id", event.target.value)} style={inputStyle}>
+                    <div key={link.draftKey} style={{ display: "grid", gridTemplateColumns: "minmax(90px, .8fr) minmax(0, 1.5fr) 32px", gap: 7, alignItems: "center" }}>
+                      <AdminColorInput label={`Linked color name ${index + 1}`} value={link.color} onChange={(value) => updateColorProductLink(link.draftKey, "color", value)} placeholder="Color (e.g. Burgundy)" />
+                      <select aria-label={`Product for linked color ${index + 1}`} required value={link.product_id} onChange={(event) => updateColorProductLink(link.draftKey, "product_id", event.target.value)} style={inputStyle}>
                         <option value="">Choose product</option>
                         {products.filter((product) => product.id !== editingId && (!product.status || product.status === "active")).map((product) => <option key={product.id} value={product.id}>{product.name}</option>)}
                       </select>
-                      <button type="button" aria-label="Remove linked color" onClick={() => setColorProductLinks((current) => current.filter((_, itemIndex) => itemIndex !== index))} style={{ border: 0, background: "transparent", color: "#b42318", fontSize: 20, cursor: "pointer" }}>×</button>
+                      <button type="button" aria-label="Remove linked color" onClick={() => setColorProductLinks((current) => current.filter((item) => item.draftKey !== link.draftKey))} style={{ border: 0, background: "transparent", color: "#b42318", fontSize: 20, cursor: "pointer" }}>×</button>
                     </div>
                   ))}
                 </div>}
