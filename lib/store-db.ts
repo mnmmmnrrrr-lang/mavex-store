@@ -52,6 +52,16 @@ export async function removeOrder(id: string) {
 }
 export const listReturns = () => listRows<ReturnRequest>("mavex_returns");
 export const saveReturn = (value: ReturnRequest) => saveRow("mavex_returns", value);
+export async function removeReturn(id: string) {
+  const item = (await listReturns()).find((entry) => entry.id.toUpperCase() === id.toUpperCase());
+  if (!item) throw new Error("Return request not found.");
+
+  // Leave the conversation intact if the attachment cannot be removed.
+  if (item.evidence) await deleteReturnEvidence(item.evidence);
+
+  const { error } = await getSupabaseAdmin().from("mavex_returns").delete().eq("id", item.id);
+  if (error) throw new Error(`Could not delete the return conversation: ${error.message}`);
+}
 export const listComments = () => listRows<ProductComment>("mavex_product_comments");
 export const saveComment = (value: ProductComment) => saveRow("mavex_product_comments", value);
 export async function removeComment(id: string) {

@@ -523,6 +523,23 @@ export default function AdminPage() {
     }
   }
 
+  async function deleteReturn(item: OperationsData["returns"][number]) {
+    if (!window.confirm(`Permanently delete return conversation ${item.id}, all its messages, and the attached issue photo? This cannot be undone.`)) return;
+    setBusy(true);
+    setMessage("");
+    try {
+      const response = await fetch(`/api/admin/returns/${encodeURIComponent(item.id)}`, { method: "DELETE" });
+      const result = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(result.error || "Could not delete this return conversation.");
+      setOperations((current) => ({ ...current, returns: current.returns.filter((entry) => entry.id !== item.id) }));
+      setMessage(`Return conversation ${item.id} and its issue photo were deleted.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Could not delete this return conversation.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const labelStyle = { display: "block", marginBottom: 7, fontSize: 12, fontWeight: 700 };
   const productSizes = [...new Set(variants.map((variant) => variant.size))];
 
@@ -755,6 +772,7 @@ export default function AdminPage() {
               <button type="button" onClick={() => void loadOperations()} style={{ border: "1px solid #ddd", background: "#fff", padding: "9px 13px", cursor: "pointer" }}>REFRESH</button>
             </div>
             <p style={{ marginTop: 12, color: "#666" }}>Customer form: <Link href="/returns" style={{ color: "#7d3760" }}>/returns</Link></p>
+            {message && <p role="status" style={{ marginTop: 12, padding: 10, background: /deleted/i.test(message) ? "#edfff3" : "#fff4f4", color: /deleted/i.test(message) ? "#20834b" : "#b42318", fontSize: 13 }}>{message}</p>}
             {operations.returns.length === 0 ? <p style={{ marginTop: 18 }}>No return requests yet.</p> : operations.returns.map(item => <article key={item.id} style={{ border: "1px solid #eee", borderRadius: 10, padding: 18, marginTop: 16 }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
                 <strong>{item.id} · Order {item.orderId}</strong>
@@ -770,6 +788,9 @@ export default function AdminPage() {
                 <label style={labelStyle}>Reply to customer<textarea required maxLength={1200} rows={3} value={returnReplies[item.id] || ""} onChange={event => setReturnReplies(current => ({ ...current, [item.id]: event.target.value }))} placeholder="Write a reply..." style={{ ...inputStyle, resize: "vertical" }} /></label>
                 <button type="submit" style={{ justifySelf: "end", border: 0, borderRadius: 6, background: "#17213c", color: "#fff", padding: "10px 16px", fontWeight: 800, cursor: "pointer" }}>SEND REPLY</button>
               </form>
+              <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 12 }}>
+                <button type="button" disabled={busy} onClick={() => void deleteReturn(item)} style={{ border: "1px solid #efcaca", borderRadius: 6, background: "#fff", color: "#a22", padding: "9px 13px", fontWeight: 700, cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.6 : 1 }}>DELETE CONVERSATION &amp; PHOTO</button>
+              </div>
             </article>)}
           </section>}
           {activeTab === "comments" && <section style={{ background: "#fff", padding: 22, borderRadius: 12 }}><h1 style={{ marginBottom: 18 }}>Product Comments <small style={{ color: "#888", fontSize: 14 }}>({operations.comments.length})</small></h1>{operations.comments.length === 0 ? <p>No comments yet.</p> : operations.comments.map(item => <article key={item.id} style={{ border: "1px solid #eee", borderRadius: 10, padding: 18, marginTop: 12 }}><div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}><div><strong>{item.productName}</strong><p style={{ marginTop: 5 }}>{item.name} · <span style={{ color: "#ca7b00" }}>{"★".repeat(item.rating)}{"☆".repeat(5-item.rating)}</span> · {new Date(item.date).toLocaleString("en-EG")}</p></div><span style={{ fontSize: 12, color: item.status === "pending" ? "#b56b00" : "#777" }}>{item.status}</span></div><p style={{ margin: "12px 0", lineHeight: 1.7 }}>{item.message}</p>{item.reply && <p style={{ color: "#555", fontSize: 12 }}>Admin reply: {item.reply}</p>}<div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}><button type="button" onClick={() => void updateOperation("comment", item.id, { status: item.status === "published" ? "hidden" : "published" })} style={{ border: 0, borderRadius: 6, background: "#17213c", color: "#fff", padding: "9px 13px", cursor: "pointer" }}>{item.status === "published" ? "Hide" : "Publish comment"}</button><button type="button" onClick={() => { const reply = window.prompt("Reply to this comment", item.reply || ""); if (reply !== null) void updateOperation("comment", item.id, { status: item.status === "published" ? "published" : "hidden", reply }); }} style={{ border: "1px solid #ddd", background: "#fff", borderRadius: 6, padding: "9px 13px", cursor: "pointer" }}>Reply</button><button type="button" onClick={() => { if (window.confirm("Permanently delete this comment?")) void updateOperation("comment", item.id, { action: "delete" }); }} style={{ border: "1px solid #efcaca", color: "#a22", background: "#fff", borderRadius: 6, padding: "9px 13px", cursor: "pointer" }}>Delete</button></div></article>)}</section>}
