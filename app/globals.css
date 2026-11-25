@@ -129,6 +129,31 @@ button {
   white-space: nowrap;
 }
 
+.navbar-account-user {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 220px;
+}
+
+.navbar .navbar-account-user > a {
+  max-width: 145px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.navbar-account-user > button {
+  flex: 0 0 auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #a54d7e;
+  font-size: 10px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
 .navbar-search {
   position: relative;
   display: flex;
@@ -588,6 +613,15 @@ footer small {
 
   .navbar a {
     font-size: 10px;
+  }
+
+  .navbar-account-user {
+    gap: 5px;
+    max-width: 130px;
+  }
+
+  .navbar .navbar-account-user > a {
+    max-width: 75px;
   }
 
   .navbar-search {

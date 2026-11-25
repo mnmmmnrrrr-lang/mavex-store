@@ -3,6 +3,7 @@ import Link from "next/link";
 import { getStorefrontProducts, type StorefrontProduct } from "@/lib/catalog-server";
 import { localProducts } from "@/lib/catalog";
 import HomeSearch from "./home-search";
+import AccountNav from "./account-nav";
 
 export const revalidate = 60;
 
@@ -42,7 +43,7 @@ export default async function Home() {
           <Link href="#home">HOME</Link>
           <Link href="#shop">SHOP</Link>
           <Link href="#about">ABOUT</Link>
-          <Link href="/account">MY ORDERS</Link>
+          <AccountNav />
         </nav>
         <HomeSearch products={products} />
         <Link href="/cart" className="navbar-bag" aria-label="Shopping bag">

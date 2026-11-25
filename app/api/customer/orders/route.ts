@@ -4,10 +4,10 @@ import { getSupabaseAdmin } from "../../../../lib/supabase-admin";
 
 export async function GET(request: NextRequest) {
   const accessToken = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
-  if (!accessToken) return NextResponse.json({ error: "Sign in with your email address to view your orders." }, { status: 401 });
+  if (!accessToken) return NextResponse.json({ error: "Sign in to view your orders." }, { status: 401 });
   try {
     const { data, error } = await getSupabaseAdmin().auth.getUser(accessToken);
-    if (error || !data.user?.email) return NextResponse.json({ error: "Your email sign-in has expired. Please sign in again." }, { status: 401 });
+    if (error || !data.user?.email) return NextResponse.json({ error: "Your sign-in has expired. Please sign in again." }, { status: 401 });
     const verifiedEmail = data.user.email.trim().toLowerCase();
     const orders = (await listOrders())
       .filter(order => order.customer.email?.trim().toLowerCase() === verifiedEmail)

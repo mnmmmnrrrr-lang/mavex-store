@@ -4,6 +4,7 @@
 import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { getSupabaseBrowserSession } from "@/lib/supabase-browser";
 
 const governorates = [
   "Cairo", "Giza", "Alexandria", "Qalyubia", "Gharbia",
@@ -62,6 +63,26 @@ export default function CheckoutPage() {
         setCart([]);
       }
     }
+
+    const savedEmail = localStorage.getItem("mavex-last-order-email") || "";
+    if (savedEmail) setForm((current) => ({ ...current, email: current.email || savedEmail }));
+
+    let active = true;
+    void getSupabaseBrowserSession().then((session) => {
+      if (!active || !session?.user) return;
+      const metadata = session.user.user_metadata || {};
+      const fullName = String(metadata.full_name || metadata.name || [metadata.given_name, metadata.family_name].filter(Boolean).join(" ") || "");
+      setForm((current) => ({
+        ...current,
+        name: current.name || fullName,
+        email: session.user.email && current.email === savedEmail
+          ? session.user.email
+          : current.email || session.user.email || "",
+      }));
+    }).catch(() => {
+      // Checkout remains usable when auth state cannot be restored.
+    });
+    return () => { active = false; };
   }, []);
 
   const subtotal = cart.reduce(

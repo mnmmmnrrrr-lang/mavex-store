@@ -9,7 +9,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   try {
     const { data, error } = await getSupabaseAdmin().auth.getUser(accessToken);
     const email = data.user?.email?.trim().toLowerCase();
-    if (error || !email) return NextResponse.json({ error: "Your email sign-in has expired. Please sign in again." }, { status: 401 });
+    if (error || !email) return NextResponse.json({ error: "Your sign-in has expired. Please sign in again." }, { status: 401 });
 
     const { id } = await params;
     const order = await getOrder(id);
