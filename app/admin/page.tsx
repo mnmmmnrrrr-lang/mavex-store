@@ -578,7 +578,7 @@ export default function AdminPage() {
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
                   <div>
                     <p style={labelStyle}>Other color products</p>
-                    <p style={{ color: "#777", fontSize: 11, marginTop: 4 }}>Choose which product opens when a customer taps each color swatch.</p>
+                    <p style={{ color: "#777", fontSize: 11, marginTop: 4 }}>Choose the matching color product. Its photos and stock appear here without changing the product page.</p>
                   </div>
                   <button type="button" onClick={() => setColorProductLinks((current) => [...current, { draftKey: newDraftKey("linked-color"), color: "", product_id: "" }])} style={{ border: "1px solid #ddd", background: "#fff", padding: "7px 10px", cursor: "pointer", borderRadius: 4, whiteSpace: "nowrap" }}>+ ADD COLOR</button>
                 </div>

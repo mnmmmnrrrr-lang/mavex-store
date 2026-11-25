@@ -67,10 +67,29 @@ const colorCodes: Record<string, string> = {
   Green: "#39734b",
   Brown: "#795548",
   Burgundy: "#6b1632",
+  "أسود": "#111111",
+  "اسود": "#111111",
+  "أبيض": "#f5f5f5",
+  "ابيض": "#f5f5f5",
+  "كحلي": "#1a2542",
+  "وردي": "#F890C8",
+  "رمادي": "#999999",
+  "أحمر": "#d32f2f",
+  "احمر": "#d32f2f",
+  "أزرق": "#2455a4",
+  "ازرق": "#2455a4",
+  "بيج": "#d8c3a5",
+  "أخضر": "#39734b",
+  "اخضر": "#39734b",
+  "بني": "#795548",
+  "برجندي": "#6b1632",
+  "بورجندي": "#6b1632",
 };
 
 function getColorCode(color: string) {
-  const entry = Object.entries(colorCodes).find(([name]) => name.toLowerCase() === color.trim().toLowerCase());
+  const normalized = color.trim().toLowerCase();
+  if (/^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(normalized)) return normalized;
+  const entry = Object.entries(colorCodes).find(([name]) => name.toLowerCase() === normalized);
   return entry?.[1] || "#ccc";
 }
 
@@ -90,13 +109,15 @@ type ProductClientProps = {
 
 function ProductContent({ initialProduct, initialRelatedProducts }: ProductClientProps) {
   const router = useRouter();
-  const productId = initialProduct.id;
-  const product = initialProduct;
+  const [product, setProduct] = useState(initialProduct);
+  const productId = product.id;
+  const [activeColorProductId, setActiveColorProductId] = useState(initialProduct.id);
 
   const [color, setColor] = useState(() => {
     const variants = (initialProduct.product_variants || []).filter((variant) => variant.is_active !== false);
     return variants.find((variant) => variant.stock_quantity > 0)?.color || variants[0]?.color || "";
   });
+  const [loadingColorId, setLoadingColorId] = useState("");
   const [size, setSize] = useState("");
   const [quantity, setQuantity] = useState(1);
   const [imageIndex, setImageIndex] = useState(0);
@@ -155,13 +176,13 @@ function ProductContent({ initialProduct, initialRelatedProducts }: ProductClien
   const sizeGuideSizeLabel = product.size_guide_size_label || "SIZE";
   const sizeGuideWidthLabel = product.size_guide_width_label || (pantsGuide ? "WAIST" : "WIDTH");
   const sizeGuideLengthLabel = product.size_guide_length_label || "LENGTH";
-  const colors = [...new Set(variants.map((v) => v.color))];
-  const linkedColorProducts = (product.color_product_links || []).filter((link) =>
+  const colors = [...new Set((initialProduct.product_variants || []).map((v) => v.color))];
+  const linkedColorProducts = (initialProduct.color_product_links || []).filter((link) =>
     typeof link.color === "string" &&
     link.color.trim().length > 0 &&
     typeof link.product_id === "string" &&
     link.product_id &&
-    link.product_id !== product.id &&
+    link.product_id !== initialProduct.id &&
     !colors.some((color) => color.toLowerCase() === link.color.trim().toLowerCase())
   );
 
@@ -208,10 +229,45 @@ function ProductContent({ initialProduct, initialRelatedProducts }: ProductClien
     setImageIndex((c) => (c + 1) % galleryMedia.length);
   }
 
-  function changeColor(newColor: string) {
-    setColor(newColor);
+  async function selectLinkedColor(link: { color: string; product_id: string }) {
+    setLoadingColorId(link.product_id);
+    setMessage("");
+    try {
+      const response = await fetch(`/api/products/${encodeURIComponent(link.product_id)}`, { cache: "no-store" });
+      const result: unknown = await response.json();
+      if (!response.ok || !result || typeof result !== "object" || !("id" in result)) {
+        throw new Error("THIS COLOR IS CURRENTLY UNAVAILABLE.");
+      }
+
+      const nextProduct = result as Product;
+      if (!Array.isArray(nextProduct.product_variants) || !Array.isArray(nextProduct.product_images)) {
+        throw new Error("THIS COLOR IS CURRENTLY UNAVAILABLE.");
+      }
+
+      const nextColor = nextProduct.product_variants.find(
+        (variant) => variant.color.trim().toLowerCase() === link.color.trim().toLowerCase(),
+      )?.color || nextProduct.product_variants.find((variant) => variant.stock_quantity > 0)?.color || link.color;
+      setProduct(nextProduct);
+      setActiveColorProductId(link.product_id);
+      setColor(nextColor);
+      setSize("");
+      setQuantity(1);
+      setImageIndex(0);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "THIS COLOR IS CURRENTLY UNAVAILABLE.");
+    } finally {
+      setLoadingColorId("");
+    }
+  }
+
+  function selectBaseColor(nextColor: string) {
+    setProduct(initialProduct);
+    setActiveColorProductId(initialProduct.id);
+    setColor(nextColor);
     setSize("");
     setQuantity(1);
+    setImageIndex(0);
     setMessage("");
   }
 
@@ -533,32 +589,37 @@ function ProductContent({ initialProduct, initialRelatedProducts }: ProductClien
                 key={item}
                 aria-label={item}
                 title={item}
-                onClick={() => changeColor(item)}
+                disabled={Boolean(loadingColorId)}
+                aria-pressed={activeColorProductId === initialProduct.id && color === item}
+                onClick={() => selectBaseColor(item)}
                 style={{
                   width: 34,
                   height: 34,
                   borderRadius: "50%",
                   background: getColorCode(item),
-                  border:
-                    color === item ? "3px solid #F890C8" : "1px solid #ccc",
-                  outline: color === item ? "1px solid #111" : "none",
+                  border: activeColorProductId === initialProduct.id && color === item ? "3px solid #F890C8" : "1px solid #ccc",
+                  outline: activeColorProductId === initialProduct.id && color === item ? "1px solid #111" : "none",
                   cursor: "pointer",
                 }}
               />
             ))}
             {linkedColorProducts.map((link) => (
-              <Link
+              <button
                 key={link.product_id}
-                href={`/product/${encodeURIComponent(link.product_id)}`}
                 aria-label={`View ${link.color} color`}
                 title={`View ${link.color}`}
+                type="button"
+                aria-pressed={activeColorProductId === link.product_id}
+                aria-busy={loadingColorId === link.product_id}
+                disabled={Boolean(loadingColorId)}
+                onClick={() => selectLinkedColor(link)}
                 style={{
-                  display: "block",
                   width: 34,
                   height: 34,
                   borderRadius: "50%",
                   background: getColorCode(link.color),
-                  border: "1px solid #ccc",
+                  border: activeColorProductId === link.product_id ? "3px solid #F890C8" : "1px solid #ccc",
+                  outline: activeColorProductId === link.product_id ? "1px solid #111" : "none",
                   cursor: "pointer",
                 }}
               />
