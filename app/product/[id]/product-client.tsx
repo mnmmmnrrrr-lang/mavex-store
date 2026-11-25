@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 import SizeFinder, { type SizeFinderOption } from "./size-finder";
+import { canLinkColorProduct } from "@/lib/product-type";
 
 type Variant = {
   id: string;
@@ -242,6 +243,9 @@ function ProductContent({ initialProduct, initialRelatedProducts }: ProductClien
       const nextProduct = result as Product;
       if (!Array.isArray(nextProduct.product_variants) || !Array.isArray(nextProduct.product_images)) {
         throw new Error("THIS COLOR IS CURRENTLY UNAVAILABLE.");
+      }
+      if (!canLinkColorProduct(initialProduct.name, nextProduct.name)) {
+        throw new Error("THIS COLOR IS LINKED TO A DIFFERENT PRODUCT TYPE. PLEASE CONTACT THE STORE.");
       }
 
       const nextColor = nextProduct.product_variants.find(

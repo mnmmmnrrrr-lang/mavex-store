@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
+import { canLinkColorProduct } from "@/lib/product-type";
 
 type VariantDraft = {
   draftKey: string;
@@ -578,7 +579,7 @@ export default function AdminPage() {
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
                   <div>
                     <p style={labelStyle}>Other color products</p>
-                    <p style={{ color: "#777", fontSize: 11, marginTop: 4 }}>Choose the matching color product. Its photos and stock appear here without changing the product page.</p>
+                    <p style={{ color: "#777", fontSize: 11, marginTop: 4 }}>Only active products of the same type are listed. Choose the matching color version; its photos and stock appear here without changing the page.</p>
                   </div>
                   <button type="button" onClick={() => setColorProductLinks((current) => [...current, { draftKey: newDraftKey("linked-color"), color: "", product_id: "" }])} style={{ border: "1px solid #ddd", background: "#fff", padding: "7px 10px", cursor: "pointer", borderRadius: 4, whiteSpace: "nowrap" }}>+ ADD COLOR</button>
                 </div>
@@ -588,7 +589,7 @@ export default function AdminPage() {
                       <AdminColorInput label={`Linked color name ${index + 1}`} value={link.color} onChange={(value) => updateColorProductLink(link.draftKey, "color", value)} placeholder="Color (e.g. Burgundy)" />
                       <select aria-label={`Product for linked color ${index + 1}`} required value={link.product_id} onChange={(event) => updateColorProductLink(link.draftKey, "product_id", event.target.value)} style={inputStyle}>
                         <option value="">Choose product</option>
-                        {products.filter((product) => product.id !== editingId && (!product.status || product.status === "active")).map((product) => <option key={product.id} value={product.id}>{product.name}</option>)}
+                        {products.filter((product) => product.id !== editingId && (!product.status || product.status === "active") && canLinkColorProduct(name, product.name)).map((product) => <option key={product.id} value={product.id}>{product.name}</option>)}
                       </select>
                       <button type="button" aria-label="Remove linked color" onClick={() => setColorProductLinks((current) => current.filter((item) => item.draftKey !== link.draftKey))} style={{ border: 0, background: "transparent", color: "#b42318", fontSize: 20, cursor: "pointer" }}>×</button>
                     </div>
