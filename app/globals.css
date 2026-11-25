@@ -370,11 +370,81 @@ button {
 
 .product-card {
   min-width: 0;
+  transform-style: preserve-3d;
+  transform-origin: center center;
+  transition: transform 180ms ease-out;
+  will-change: transform;
 }
 
 .product-card a {
   color: inherit;
   text-decoration: none;
+}
+
+.mavex-product-card-visual {
+  position: relative;
+}
+
+.mavex-product-card-media {
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  background: #f4eaf0;
+}
+
+.mavex-product-card-link {
+  display: block;
+}
+
+.mavex-product-card-media-link {
+  position: absolute;
+  inset: 0;
+  display: block;
+}
+
+.mavex-product-card-image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  transition: opacity 300ms ease-in-out, transform 420ms ease-in-out;
+}
+
+.mavex-product-card-front {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.mavex-product-card-back {
+  opacity: 0;
+  transform: scale(1.015);
+}
+
+.mavex-product-card.is-back-visible .mavex-product-card-front {
+  opacity: 0;
+}
+
+.mavex-product-card.is-back-visible .mavex-product-card-back {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.mavex-product-card.is-hovered:not(.has-back-image) .mavex-product-card-front {
+  transform: scale(1.05);
+}
+
+.mavex-product-card-placeholder {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  color: #888;
+}
+
+.mavex-product-card-view-toggle {
+  display: none;
 }
 
 .product-card a.add-button {
@@ -388,6 +458,41 @@ button {
   object-fit: contain;
   display: block;
   background: #f4eaf0;
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .mavex-product-card {
+    transition: none;
+    will-change: auto;
+  }
+
+  .mavex-product-card-view-toggle {
+    position: absolute;
+    right: 9px;
+    bottom: 9px;
+    z-index: 2;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 58px;
+    min-height: 28px;
+    padding: 5px 9px;
+    border: 1px solid rgb(0 0 0 / 12%);
+    background: rgb(255 255 255 / 92%);
+    color: #111;
+    font-size: 9px;
+    font-weight: 900;
+    letter-spacing: 0.8px;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgb(0 0 0 / 12%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mavex-product-card,
+  .mavex-product-card-image {
+    transition-duration: 0.01ms !important;
+  }
 }
 
 .product-card h3 {

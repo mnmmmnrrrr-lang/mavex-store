@@ -4,6 +4,7 @@ import { getStorefrontProducts, type StorefrontProduct } from "@/lib/catalog-ser
 import { localProducts } from "@/lib/catalog";
 import HomeSearch from "./home-search";
 import AccountNav from "./account-nav";
+import ProductCard from "./product-card";
 
 export const revalidate = 60;
 
@@ -78,38 +79,12 @@ export default async function Home() {
 
         <div className="product-grid">
           {products.map((product, index) => {
-            const image = product.product_images[0]?.image_url || fallbackImages[index % fallbackImages.length];
             return (
-              <article className="product-card" key={product.id}>
-                <Link href={`/product/${encodeURIComponent(product.id)}`} style={{ color: "inherit", textDecoration: "none" }}>
-                  <Image
-                    className="product-image"
-                    src={image}
-                    alt={product.product_images[0]?.alt_text || product.name}
-                    width={700}
-                    height={850}
-                    sizes="(max-width: 700px) 50vw, (max-width: 1100px) 33vw, 25vw"
-                    quality={90}
-                    loading="lazy"
-                  />
-                  <h3>{product.name}</h3>
-                </Link>
-                <p>
-                  EGP {Number(product.price).toLocaleString("en-EG")}
-                  {product.compare_at_price && product.compare_at_price > product.price && (
-                    <del style={{ marginInlineStart: 10, color: "#888", fontSize: 13 }}>
-                      EGP {Number(product.compare_at_price).toLocaleString("en-EG")}
-                    </del>
-                  )}
-                </p>
-                <Link
-                  className="add-button"
-                  href={`/product/${encodeURIComponent(product.id)}`}
-                  style={{ display: "block", textAlign: "center", textDecoration: "none" }}
-                >
-                  CHOOSE COLOR &amp; SIZE
-                </Link>
-              </article>
+              <ProductCard
+                key={product.id}
+                product={product}
+                fallbackImage={fallbackImages[index % fallbackImages.length]}
+              />
             );
           })}
         </div>

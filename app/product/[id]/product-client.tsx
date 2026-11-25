@@ -7,6 +7,7 @@ import Image from "next/image";
 import SizeFinder, { type SizeFinderOption } from "./size-finder";
 import { canLinkColorProduct } from "@/lib/product-type";
 import { normalizeCartItems, type CartItem } from "@/lib/cart";
+import ProductCard from "@/app/product-card";
 
 type Variant = {
   id: string;
@@ -908,31 +909,8 @@ function ProductContent({ initialProduct, initialRelatedProducts }: ProductClien
           <h2 style={{ fontSize: 24, marginBottom: 22 }}>YOU MAY ALSO LIKE</h2>
           <div className="product-grid">
             {relatedProducts.map((item) => {
-              const image = [...(item.product_images || [])]
-                .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))[0];
-
               return (
-                <article className="product-card" key={item.id}>
-                  <Link href={`/product/${encodeURIComponent(item.id)}`}>
-                    {image ? (
-                      <Image className="product-image" src={image.image_url} alt={image.alt_text || item.name} width={700} height={850} sizes="(max-width: 700px) 50vw, 25vw" quality={90} />
-                    ) : (
-                      <div className="product-image" style={{ display: "grid", placeItems: "center", color: "#888" }}>MAVEX</div>
-                    )}
-                    <h3>{item.name}</h3>
-                  </Link>
-                  <p>
-                    EGP {Number(item.price).toLocaleString("en-EG")}
-                    {item.compare_at_price && item.compare_at_price > item.price && (
-                      <del style={{ marginInlineStart: 8, color: "#888", fontSize: 11 }}>
-                        EGP {Number(item.compare_at_price).toLocaleString("en-EG")}
-                      </del>
-                    )}
-                  </p>
-                  <Link className="add-button" href={`/product/${encodeURIComponent(item.id)}`} style={{ display: "block", textAlign: "center", textDecoration: "none" }}>
-                    CHOOSE COLOR &amp; SIZE
-                  </Link>
-                </article>
+                <ProductCard key={item.id} product={item} sizes="(max-width: 700px) 50vw, 25vw" />
               );
             })}
           </div>
