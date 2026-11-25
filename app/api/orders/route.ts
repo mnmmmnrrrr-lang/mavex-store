@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { after, NextRequest, NextResponse } from "next/server";
 import { getCatalogProduct } from "../../../lib/catalog-server";
 import { newOperationId, StoreOrder } from "../../../lib/operations-store";
 import { saveOrder, savePaymentProof } from "../../../lib/store-db";
@@ -67,14 +67,40 @@ export async function POST(request: NextRequest) {
       status: payment === "cod" ? "Pending confirmation" : "Awaiting payment review", date: new Date().toISOString(),
     };
     await saveOrder(order);
-    let notificationSent = false;
-    try {
-      notificationSent = await notifyAdmin(order);
-      if (!notificationSent) console.warn("Order saved; admin email notification is not configured.");
-    } catch (error) {
-      console.error("Order saved, but admin email notification failed:", error instanceof Error ? error.message : "Unknown email error");
-    }
-    return NextResponse.json({ id: order.id, notificationSent }, { status: 201 });
+
+    const telegramBotToken = process.env.TELEGRAM_BOT_TOKEN?.trim();
+    const telegramRouteUrl = process.env.VERCEL_URL
+      ? `https://${process.env.VERCEL_URL.replace(/^https?:\/\//, "")}/api/telegram-notify`
+      : new URL("/api/telegram-notify", process.env.NEXT_PUBLIC_SITE_URL || `http://localhost:${process.env.PORT || "3000"}`).toString();
+
+    after(async () => {
+      const emailNotification = notifyAdmin(order)
+        .then(sent => { if (!sent) console.warn("Order saved; admin email notification is not configured."); })
+        .catch(error => console.error("Order saved, but admin email notification failed:", error instanceof Error ? error.message : "Unknown email error"));
+
+      const telegramNotification = (async () => {
+        if (!telegramBotToken || !process.env.TELEGRAM_CHAT_ID?.trim()) {
+          console.warn("Order saved; Telegram notification is not configured.");
+          return;
+        }
+        try {
+          const response = await fetch(telegramRouteUrl, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${telegramBotToken}`, "Content-Type": "application/json" },
+            body: JSON.stringify(order),
+            cache: "no-store",
+            signal: AbortSignal.timeout(10_000),
+          });
+          if (!response.ok) console.error("Order saved, but Telegram notification endpoint returned:", response.status);
+        } catch (error) {
+          console.error("Order saved, but Telegram notification failed:", error instanceof Error ? error.message : "Unknown Telegram error");
+        }
+      })();
+
+      await Promise.all([emailNotification, telegramNotification]);
+    });
+
+    return NextResponse.json({ id: order.id }, { status: 201 });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Could not save your order. Please try again." }, { status: 503 });
   }
