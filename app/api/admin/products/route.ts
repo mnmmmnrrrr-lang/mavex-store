@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { revalidatePath } from "next/cache";
 import { NextRequest, NextResponse } from "next/server";
 import { ADMIN_COOKIE, isAdminSessionValid } from "../../../../lib/admin-auth";
 import {
@@ -7,6 +8,7 @@ import {
   parseColorProductLinks,
 } from "../../../../lib/admin-store";
 import { getCatalogProducts } from "../../../../lib/catalog-server";
+import { validateColorProductLinks } from "../../../../lib/color-product-links";
 import { deleteProductImage, deleteProductVideo, getProductImagePublicUrl, getProductVideoPublicUrl, isProductImagePath, isProductVideoPath, saveCatalogProduct, saveProductImage } from "../../../../lib/store-db";
 
 type VariantInput = {
@@ -127,6 +129,40 @@ export async function GET(request: NextRequest) {
   }
 }
 
+export async function PATCH(request: NextRequest) {
+  if (!isAuthorized(request)) {
+    return NextResponse.json({ error: "Please log in to the admin panel." }, { status: 401 });
+  }
+
+  try {
+    const body: unknown = await request.json();
+    if (!body || typeof body !== "object" || !Array.isArray((body as { productIds?: unknown }).productIds)) {
+      throw new Error("Send the complete product order.");
+    }
+
+    const productIds = (body as { productIds: unknown[] }).productIds;
+    const products = await getCatalogProducts(true);
+    const byId = new Map(products.map((product) => [product.id, product]));
+    if (
+      productIds.length !== products.length ||
+      productIds.length > 500 ||
+      productIds.some((id) => typeof id !== "string" || !byId.has(id)) ||
+      new Set(productIds).size !== productIds.length
+    ) {
+      throw new Error("The product order is invalid. Refresh the page and try again.");
+    }
+
+    await Promise.all(productIds.map((id, sort_order) => {
+      const product = byId.get(id as string)!;
+      return saveCatalogProduct({ ...product, sort_order });
+    }));
+    revalidatePath("/", "page");
+    return NextResponse.json({ products: await getCatalogProducts(true) });
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Could not reorder products." }, { status: 400 });
+  }
+}
+
 export async function POST(request: NextRequest) {
   if (!isAuthorized(request)) {
     return NextResponse.json({ error: "Please log in to the admin panel." }, { status: 401 });
@@ -138,6 +174,12 @@ export async function POST(request: NextRequest) {
   try {
     const form = await request.formData();
     const fields = parseProduct(form);
+    const existingProducts = await getCatalogProducts(true);
+    const requestedOrderValue = String(form.get("sortOrder") ?? "").trim();
+    const requestedOrder = requestedOrderValue ? Number(requestedOrderValue) : Number.NaN;
+    const sortOrder = Number.isSafeInteger(requestedOrder) && requestedOrder >= 0 && requestedOrder <= existingProducts.length
+      ? requestedOrder
+      : existingProducts.length;
     uploadedImagePaths = parseProductImagePaths(form);
     uploadedVideoPath = String(form.get("productVideoPath") || "");
     if (uploadedVideoPath && !isProductVideoPath(uploadedVideoPath)) throw new Error("Invalid product video upload.");
@@ -147,6 +189,7 @@ export async function POST(request: NextRequest) {
     }
 
     const id = makeSlug(fields.name) + "-" + randomBytes(3).toString("hex");
+    await validateColorProductLinks(id, fields.name, fields.colorProductLinks);
     const legacyImages = await Promise.all(images.map(async (image, index) => {
       const imageUrl = await saveProductImage(id, image);
       uploadedLegacyImageUrls.push(imageUrl);
@@ -163,6 +206,7 @@ export async function POST(request: NextRequest) {
       description: fields.description,
       price: fields.price,
       compare_at_price: fields.compareAtPrice,
+      sort_order: sortOrder,
       size_guide: fields.sizeGuide,
       size_guide_title: fields.sizeGuideTitle,
       size_guide_size_label: fields.sizeGuideSizeLabel,
@@ -175,6 +219,8 @@ export async function POST(request: NextRequest) {
     };
 
     await saveCatalogProduct(product);
+    revalidatePath("/", "page");
+    revalidatePath("/product/[id]", "page");
     uploadedVideoPath = "";
     uploadedImagePaths = [];
     uploadedLegacyImageUrls = [];

@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 import SizeFinder, { type SizeFinderOption } from "./size-finder";
-import { canLinkColorProduct } from "@/lib/product-type";
 import { normalizeCartItems, type CartItem } from "@/lib/cart";
 import ProductCard from "@/app/product-card";
 
@@ -111,7 +110,6 @@ function ProductContent({ initialProduct, initialRelatedProducts }: ProductClien
     const variants = (initialProduct.product_variants || []).filter((variant) => variant.is_active !== false);
     return variants.find((variant) => variant.stock_quantity > 0)?.color || variants[0]?.color || "";
   });
-  const [loadingColorId, setLoadingColorId] = useState("");
   const [size, setSize] = useState("");
   const [quantity, setQuantity] = useState(1);
   const [imageIndex, setImageIndex] = useState(0);
@@ -223,39 +221,9 @@ function ProductContent({ initialProduct, initialRelatedProducts }: ProductClien
     setImageIndex((c) => (c + 1) % galleryMedia.length);
   }
 
-  async function selectLinkedColor(link: { color: string; product_id: string }) {
-    setLoadingColorId(link.product_id);
+  function selectLinkedColor(link: { color: string; product_id: string }) {
     setMessage("");
-    try {
-      const response = await fetch(`/api/products/${encodeURIComponent(link.product_id)}`, { cache: "no-store" });
-      const result: unknown = await response.json();
-      if (!response.ok || !result || typeof result !== "object" || !("id" in result)) {
-        throw new Error("THIS COLOR IS CURRENTLY UNAVAILABLE.");
-      }
-
-      const nextProduct = result as Product;
-      if (!Array.isArray(nextProduct.product_variants) || !Array.isArray(nextProduct.product_images)) {
-        throw new Error("THIS COLOR IS CURRENTLY UNAVAILABLE.");
-      }
-      if (!canLinkColorProduct(initialProduct.name, nextProduct.name)) {
-        throw new Error("THIS COLOR IS LINKED TO A DIFFERENT PRODUCT TYPE. PLEASE CONTACT THE STORE.");
-      }
-
-      const nextColor = nextProduct.product_variants.find(
-        (variant) => variant.color.trim().toLowerCase() === link.color.trim().toLowerCase(),
-      )?.color || nextProduct.product_variants.find((variant) => variant.stock_quantity > 0)?.color || link.color;
-      setProduct(nextProduct);
-      setActiveColorProductId(link.product_id);
-      setColor(nextColor);
-      setSize("");
-      setQuantity(1);
-      setImageIndex(0);
-      window.scrollTo({ top: 0, behavior: "smooth" });
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "THIS COLOR IS CURRENTLY UNAVAILABLE.");
-    } finally {
-      setLoadingColorId("");
-    }
+    router.push(`/product/${encodeURIComponent(link.product_id)}`);
   }
 
   function selectBaseColor(nextColor: string) {
@@ -595,7 +563,6 @@ function ProductContent({ initialProduct, initialRelatedProducts }: ProductClien
                 key={item}
                 aria-label={item}
                 title={item}
-                disabled={Boolean(loadingColorId)}
                 aria-pressed={activeColorProductId === initialProduct.id && color === item}
                 onClick={() => selectBaseColor(item)}
                 style={{
@@ -616,9 +583,9 @@ function ProductContent({ initialProduct, initialRelatedProducts }: ProductClien
                 title={`View ${link.color}`}
                 type="button"
                 aria-pressed={activeColorProductId === link.product_id}
-                aria-busy={loadingColorId === link.product_id}
-                disabled={Boolean(loadingColorId)}
                 onClick={() => selectLinkedColor(link)}
+                onMouseEnter={() => router.prefetch(`/product/${encodeURIComponent(link.product_id)}`)}
+                onFocus={() => router.prefetch(`/product/${encodeURIComponent(link.product_id)}`)}
                 style={{
                   width: 34,
                   height: 34,

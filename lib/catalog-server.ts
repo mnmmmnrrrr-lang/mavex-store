@@ -4,7 +4,22 @@ import { CatalogProduct } from "@/lib/admin-store";
 import { getCatalogOverlay } from "@/lib/store-db";
 import { getSupabaseAdmin, hasSupabaseAdmin } from "@/lib/supabase-admin";
 
-export type StorefrontProduct = Pick<CatalogProduct, "id" | "name" | "description" | "price" | "compare_at_price" | "product_images">;
+export type StorefrontProduct = Pick<CatalogProduct, "id" | "name" | "description" | "price" | "compare_at_price" | "product_images" | "sort_order">;
+
+function orderByDisplayPosition<T extends { sort_order?: number }>(products: T[]): (T & { sort_order: number })[] {
+  const highestSavedOrder = products.reduce(
+    (maximum, product) => Number.isSafeInteger(product.sort_order) ? Math.max(maximum, product.sort_order!) : maximum,
+    -1,
+  );
+  return products
+    .map((product, index) => ({
+      product,
+      index,
+      order: Number.isSafeInteger(product.sort_order) ? product.sort_order! : highestSavedOrder + index + 1,
+    }))
+    .sort((a, b) => a.order - b.order || a.index - b.index)
+    .map(({ product }, index) => ({ ...product, sort_order: index }));
+}
 
 function toStorefrontProduct(product: Partial<CatalogProduct> & Pick<CatalogProduct, "id" | "name" | "price">): StorefrontProduct {
   return {
@@ -13,6 +28,7 @@ function toStorefrontProduct(product: Partial<CatalogProduct> & Pick<CatalogProd
     description: product.description ?? null,
     price: product.price,
     compare_at_price: product.compare_at_price ?? null,
+    sort_order: product.sort_order,
     product_images: product.product_images || [],
   };
 }
@@ -36,7 +52,7 @@ export async function getStorefrontProducts(): Promise<StorefrontProduct[]> {
   for (const product of state.products) {
     if (!deleted.has(product.id)) merged.set(product.id, toStorefrontProduct(product));
   }
-  return [...merged.values()];
+  return orderByDisplayPosition([...merged.values()]);
 }
 
 export async function getRelatedStorefrontProducts(
@@ -62,7 +78,7 @@ export async function getRelatedStorefrontProducts(
     merged.set(product.id, override ? { ...product, ...override } : product);
   }
 
-  const candidates = [...merged.values()].filter(
+  const candidates = orderByDisplayPosition([...merged.values()]).filter(
     (product) => product.id !== excludedId && product.slug !== excludedId
   );
   const isBottoms = (product: CatalogProduct) => /\b(pants?|joggers?|trousers?|shorts?)\b/i.test(`${product.name} ${product.slug}`);
@@ -114,7 +130,7 @@ export async function getCatalogProducts(includeInactive = false): Promise<Catal
   for (const product of state.products) {
     if (!deleted.has(product.id)) merged.set(product.id, product);
   }
-  return [...merged.values()];
+  return orderByDisplayPosition([...merged.values()]);
 }
 
 export async function getCatalogProduct(id: string, includeInactive = false) {

@@ -7,6 +7,8 @@ export type CatalogProduct = {
   description: string | null;
   price: number;
   compare_at_price: number | null;
+  sort_order?: number;
+  status?: string;
   size_guide?: { size: string; label?: string; width: number; length: number }[];
   size_guide_title?: string;
   size_guide_size_label?: string;

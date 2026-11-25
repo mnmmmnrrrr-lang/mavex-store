@@ -443,10 +443,6 @@ button {
   color: #888;
 }
 
-.mavex-product-card-view-toggle {
-  display: none;
-}
-
 .product-card a.add-button {
   color: #fff;
 }
@@ -466,26 +462,6 @@ button {
     will-change: auto;
   }
 
-  .mavex-product-card-view-toggle {
-    position: absolute;
-    right: 9px;
-    bottom: 9px;
-    z-index: 2;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 58px;
-    min-height: 28px;
-    padding: 5px 9px;
-    border: 1px solid rgb(0 0 0 / 12%);
-    background: rgb(255 255 255 / 92%);
-    color: #111;
-    font-size: 9px;
-    font-weight: 900;
-    letter-spacing: 0.8px;
-    cursor: pointer;
-    box-shadow: 0 2px 8px rgb(0 0 0 / 12%);
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {

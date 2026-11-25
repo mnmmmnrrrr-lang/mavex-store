@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, type PointerEvent } from "react";
+import { useRef, useState, type MouseEvent, type PointerEvent } from "react";
 import Image from "next/image";
 import Link from "next/link";
 
@@ -27,6 +27,7 @@ export default function ProductCard({
   const [backLoaded, setBackLoaded] = useState(false);
   const [backFailed, setBackFailed] = useState(false);
   const cardRef = useRef<HTMLElement>(null);
+  const touchPointerDown = useRef(false);
 
   const orderedImages = [...(product.product_images || [])].sort(
     (a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0),
@@ -63,6 +64,18 @@ export default function ProductCard({
     }
   }
 
+  function handleImagePointerDown(event: PointerEvent<HTMLAnchorElement>) {
+    touchPointerDown.current = event.pointerType === "touch";
+  }
+
+  function handleImageClick(event: MouseEvent<HTMLAnchorElement>) {
+    if (!hasBackImage || !touchPointerDown.current) return;
+    event.preventDefault();
+    touchPointerDown.current = false;
+    setShouldLoadBack(true);
+    setMobileBack((visible) => !visible);
+  }
+
   return (
     <article
       ref={cardRef}
@@ -74,7 +87,13 @@ export default function ProductCard({
     >
       <div className="mavex-product-card-visual">
         <div className="mavex-product-card-media">
-          <Link href={href} className="mavex-product-card-media-link" aria-label={product.name}>
+          <Link
+            href={href}
+            className="mavex-product-card-media-link"
+            aria-label={product.name}
+            onPointerDown={handleImagePointerDown}
+            onClick={handleImageClick}
+          >
             {frontImage ? (
               <Image
                 className="mavex-product-card-image mavex-product-card-front"
@@ -106,21 +125,6 @@ export default function ProductCard({
               />
             )}
           </Link>
-          {hasBackImage && (
-            <button
-              type="button"
-              className="mavex-product-card-view-toggle"
-              aria-label={mobileBack ? "Show front view" : "Show back view"}
-              aria-pressed={mobileBack}
-              aria-busy={shouldLoadBack && !backLoaded}
-              onClick={() => {
-                setShouldLoadBack(true);
-                setMobileBack((visible) => !visible);
-              }}
-            >
-              {shouldLoadBack && !backLoaded ? "LOADING…" : mobileBack ? "FRONT" : "BACK"}
-            </button>
-          )}
         </div>
         <Link href={href} className="mavex-product-card-link">
           <h3>{product.name}</h3>

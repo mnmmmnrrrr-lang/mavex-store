@@ -26,6 +26,7 @@ type AdminProduct = {
   description: string | null;
   price: number;
   compare_at_price: number | null;
+  sort_order?: number;
   size_guide?: { size: string; label?: string; width: number; length: number }[];
   size_guide_title?: string;
   size_guide_size_label?: string;
@@ -43,6 +44,7 @@ type OperationsData = {
 };
 type ProductMediaKind = "image" | "video";
 type UploadedProductMedia = { kind: ProductMediaKind; path: string };
+type QuickProductEdit = { price: string; stockByVariant: Record<string, string> };
 
 const sizes = ["XS", "S", "M", "L", "XL", "XXL"];
 const standardMeasurements: Record<string, { label: string; width: string; length: string }> = {
@@ -148,6 +150,20 @@ async function fetchAdminCatalog(): Promise<AdminProduct[] | null> {
   return result.products || [];
 }
 
+function makeQuickProductEdit(product: AdminProduct): QuickProductEdit {
+  return {
+    price: String(product.price),
+    stockByVariant: Object.fromEntries(product.product_variants.map((variant) => [variant.id, String(variant.stock_quantity)])),
+  };
+}
+
+function sortAdminProducts(products: AdminProduct[]) {
+  return products
+    .map((product, index) => ({ product, index }))
+    .sort((a, b) => (a.product.sort_order ?? a.index) - (b.product.sort_order ?? b.index) || a.index - b.index)
+    .map(({ product }, sort_order) => ({ ...product, sort_order }));
+}
+
 async function uploadProductMedia(file: File, kind: ProductMediaKind): Promise<UploadedProductMedia> {
   // Keep the original pixels and file format. Next Image creates responsive
   // delivery variants when the photo is displayed on the storefront.
@@ -181,6 +197,10 @@ export default function AdminPage() {
   const [loggedIn, setLoggedIn] = useState(false);
   const [password, setPassword] = useState("");
   const [products, setProducts] = useState<AdminProduct[]>([]);
+  const [quickEdits, setQuickEdits] = useState<Record<string, QuickProductEdit>>({});
+  const [quickSavingId, setQuickSavingId] = useState<string | null>(null);
+  const [orderSaving, setOrderSaving] = useState(false);
+  const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingProduct, setEditingProduct] = useState<AdminProduct | null>(null);
   const [name, setName] = useState("");
@@ -207,7 +227,7 @@ export default function AdminPage() {
   async function loadProducts() {
     const savedProducts = await fetchAdminCatalog();
     if (!savedProducts) return false;
-    setProducts(savedProducts);
+    setProducts(sortAdminProducts(savedProducts));
     setLoggedIn(true);
     await loadOperations();
     return true;
@@ -233,7 +253,7 @@ export default function AdminPage() {
     fetchAdminCatalog()
       .then((savedProducts) => {
         if (cancelled || !savedProducts) return;
-        setProducts(savedProducts);
+        setProducts(sortAdminProducts(savedProducts));
         setLoggedIn(true);
         void loadOperations();
       })
@@ -410,6 +430,7 @@ export default function AdminPage() {
     form.set("description", description);
     form.set("price", price);
     form.set("compareAtPrice", compareAtPrice);
+    if (!editingId) form.set("sortOrder", String(Math.max(-1, ...products.map((product) => product.sort_order ?? -1)) + 1));
     form.set("variants", JSON.stringify(variants.map((variant) => ({
       id: variant.id,
       color: variant.color,
@@ -457,8 +478,8 @@ export default function AdminPage() {
       uploadedMedia.length = 0;
       setProducts((current) => {
         const index = current.findIndex((product) => product.id === result.id);
-        if (index < 0) return [result, ...current];
-        return current.map((product) => product.id === result.id ? result : product);
+        if (index < 0) return sortAdminProducts([...current, result]);
+        return sortAdminProducts(current.map((product) => product.id === result.id ? result : product));
       });
       setMessage(editingId ? "Product updated." : "Product added to the store.");
       resetForm();
@@ -488,6 +509,92 @@ export default function AdminPage() {
       setMessage("Product deleted from the store.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Could not delete the product.");
+    }
+  }
+
+  function updateQuickPrice(product: AdminProduct, value: string) {
+    setQuickEdits((current) => {
+      const edit = current[product.id] || makeQuickProductEdit(product);
+      return { ...current, [product.id]: { ...edit, price: value } };
+    });
+  }
+
+  function updateQuickStock(product: AdminProduct, variantId: string, value: string) {
+    setQuickEdits((current) => {
+      const edit = current[product.id] || makeQuickProductEdit(product);
+      return { ...current, [product.id]: { ...edit, stockByVariant: { ...edit.stockByVariant, [variantId]: value } } };
+    });
+  }
+
+  async function saveQuickEdit(product: AdminProduct) {
+    const edit = quickEdits[product.id] || makeQuickProductEdit(product);
+    setQuickSavingId(product.id);
+    setMessage("");
+    try {
+      const response = await fetch(`/api/admin/products/${encodeURIComponent(product.id)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          price: edit.price,
+          variants: product.product_variants.map((variant) => ({
+            id: variant.id,
+            stock_quantity: edit.stockByVariant[variant.id] ?? String(variant.stock_quantity),
+          })),
+        }),
+      });
+      const result = await response.json() as AdminProduct & { error?: string };
+      if (!response.ok) throw new Error(result.error || "Could not save price and stock.");
+      setProducts((current) => sortAdminProducts(current.map((item) => item.id === product.id ? result : item)));
+      setQuickEdits((current) => ({ ...current, [product.id]: makeQuickProductEdit(result) }));
+      setMessage("Price and stock saved.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Could not save price and stock.");
+    } finally {
+      setQuickSavingId(null);
+    }
+  }
+
+  async function moveProduct(productId: string, direction: -1 | 1) {
+    const index = products.findIndex((product) => product.id === productId);
+    const targetIndex = index + direction;
+    if (index < 0 || targetIndex < 0 || targetIndex >= products.length || orderSaving) return;
+    const previous = products;
+    const reordered = [...products];
+    [reordered[index], reordered[targetIndex]] = [reordered[targetIndex], reordered[index]];
+    setProducts(reordered.map((product, sort_order) => ({ ...product, sort_order })));
+    setOrderSaving(true);
+    setMessage("");
+    try {
+      const response = await fetch("/api/admin/products", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ productIds: reordered.map((product) => product.id) }),
+      });
+      const result = await response.json() as { products?: AdminProduct[]; error?: string };
+      if (!response.ok || !result.products) throw new Error(result.error || "Could not update the storefront order.");
+      setProducts(sortAdminProducts(result.products));
+      setMessage("Storefront order updated.");
+    } catch (error) {
+      setProducts(previous);
+      setMessage(error instanceof Error ? error.message : "Could not update the storefront order.");
+    } finally {
+      setOrderSaving(false);
+    }
+  }
+
+  async function duplicateProduct(product: AdminProduct) {
+    setDuplicatingId(product.id);
+    setMessage("");
+    try {
+      const response = await fetch(`/api/admin/products/${encodeURIComponent(product.id)}/duplicate`, { method: "POST" });
+      const result = await response.json() as AdminProduct & { error?: string };
+      if (!response.ok) throw new Error(result.error || "Could not duplicate the product.");
+      setProducts((current) => sortAdminProducts([...current, result]));
+      setMessage("Product duplicated. Edit its color, name, and photos when ready.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Could not duplicate the product.");
+    } finally {
+      setDuplicatingId(null);
     }
   }
 
@@ -698,27 +805,46 @@ export default function AdminPage() {
                 {editingId && <button type="button" onClick={resetForm} style={{ background: "#fff", border: "1px solid #ccc", padding: 15, cursor: "pointer" }}>CANCEL EDIT</button>}
                 <button type="submit" className="add-button" disabled={busy} style={{ width: "100%" }}>{busy ? "SAVING..." : editingId ? "SAVE CHANGES" : "ADD PRODUCT TO STORE"}</button>
               </div>
-              {message && <p role="status" style={{ marginTop: 14, color: /saved|updated|deleted|added/i.test(message) ? "#20834b" : "#b42318", fontSize: 13 }}>{message}</p>}
+              {message && <p role="status" style={{ marginTop: 14, color: /saved|updated|deleted|added|duplicated/i.test(message) ? "#20834b" : "#b42318", fontSize: 13 }}>{message}</p>}
             </form>
           </section>
 
           <aside style={{ background: "#fff", padding: 24, borderRadius: 9, boxShadow: "0 8px 30px #0000000d" }}>
             <p style={{ color: "#f890c8", letterSpacing: 2, fontSize: 11, fontWeight: 800 }}>ALL STORE PRODUCTS</p>
             <h2 style={{ margin: "8px 0 18px", fontSize: 22 }}>Products ({products.length})</h2>
-            {products.length === 0 ? <p style={{ color: "#777", fontSize: 13 }}>No products found.</p> : products.map((product) => (
-              <article key={product.id} style={{ display: "grid", gridTemplateColumns: "58px 1fr auto", gap: 10, alignItems: "center", padding: "12px 0", borderTop: "1px solid #eee" }}>
-                {product.product_images[0]?.image_url ? <Image src={product.product_images[0].image_url} alt={product.name} width={58} height={68} sizes="58px" quality={80} style={{ width: 58, height: 68, objectFit: "cover", background: "#f2f2f2" }} /> : <div style={{ width: 58, height: 68, background: "#f2f2f2" }} />}
-                <div>
-                  <strong style={{ fontSize: 12 }}>{product.name}</strong>
-                  <p style={{ marginTop: 4, fontSize: 11, color: "#555" }}>EGP {product.price.toLocaleString("en-EG")}{product.compare_at_price ? " · was EGP " + product.compare_at_price.toLocaleString("en-EG") : ""}</p>
-                  <p style={{ marginTop: 4, fontSize: 10, color: "#777" }}>{product.product_variants.map((variant) => variant.color + " " + variant.size + ": " + variant.stock_quantity).join(" · ")}</p>
-                </div>
-                <div style={{ display: "grid", gap: 6 }}>
-                  <button type="button" onClick={() => editProduct(product)} style={{ border: "1px solid #ddd", background: "#fff", padding: "6px 9px", cursor: "pointer", fontSize: 10 }}>EDIT</button>
-                  <button type="button" onClick={() => deleteProduct(product)} style={{ border: "1px solid #f3c6c6", background: "#fff", color: "#b42318", padding: "6px 9px", cursor: "pointer", fontSize: 10 }}>DELETE</button>
-                </div>
-              </article>
-            ))}
+            {products.length === 0 ? <p style={{ color: "#777", fontSize: 13 }}>No products found.</p> : products.map((product, index) => {
+              const quickEdit = quickEdits[product.id] || makeQuickProductEdit(product);
+              return (
+                <article key={product.id} style={{ display: "grid", gridTemplateColumns: "58px minmax(0, 1fr) 82px", gap: 10, alignItems: "start", padding: "12px 0", borderTop: "1px solid #eee" }}>
+                  {product.product_images[0]?.image_url ? <Image src={product.product_images[0].image_url} alt={product.name} width={58} height={68} sizes="58px" quality={80} style={{ width: 58, height: 68, objectFit: "cover", background: "#f2f2f2" }} /> : <div style={{ width: 58, height: 68, background: "#f2f2f2" }} />}
+                  <div style={{ minWidth: 0 }}>
+                    <strong style={{ fontSize: 12 }}>{product.name}</strong>
+                    <label style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 7, fontSize: 10, color: "#555" }}>
+                      PRICE EGP
+                      <input aria-label={`Quick price for ${product.name}`} type="number" min="1" step="1" value={quickEdit.price} disabled={quickSavingId === product.id} onChange={(event) => updateQuickPrice(product, event.target.value)} style={{ ...inputStyle, width: 100, padding: "6px 8px", fontSize: 12 }} />
+                    </label>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "7px 10px", marginTop: 8 }}>
+                      {product.product_variants.map((variant) => (
+                        <label key={variant.id} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, color: "#555" }}>
+                          {variant.color} {variant.size}
+                          <input aria-label={`Quick stock for ${product.name} ${variant.color} ${variant.size}`} type="number" min="0" step="1" value={quickEdit.stockByVariant[variant.id] ?? String(variant.stock_quantity)} disabled={quickSavingId === product.id} onChange={(event) => updateQuickStock(product, variant.id, event.target.value)} style={{ ...inputStyle, width: 56, padding: "6px 7px", fontSize: 12 }} />
+                        </label>
+                      ))}
+                    </div>
+                    <button type="button" onClick={() => void saveQuickEdit(product)} disabled={quickSavingId !== null} style={{ border: 0, background: "#17213c", color: "#fff", marginTop: 8, padding: "7px 11px", cursor: quickSavingId !== null ? "default" : "pointer", fontSize: 10, fontWeight: 800 }}>
+                      {quickSavingId === product.id ? "SAVING..." : "SAVE PRICE & STOCK"}
+                    </button>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 5 }}>
+                    <button type="button" aria-label={`Move ${product.name} up`} title="Move up" onClick={() => void moveProduct(product.id, -1)} disabled={index === 0 || orderSaving} style={{ border: "1px solid #ddd", background: "#fff", padding: "5px 0", cursor: index === 0 || orderSaving ? "default" : "pointer", opacity: index === 0 || orderSaving ? 0.45 : 1 }}>↑</button>
+                    <button type="button" aria-label={`Move ${product.name} down`} title="Move down" onClick={() => void moveProduct(product.id, 1)} disabled={index === products.length - 1 || orderSaving} style={{ border: "1px solid #ddd", background: "#fff", padding: "5px 0", cursor: index === products.length - 1 || orderSaving ? "default" : "pointer", opacity: index === products.length - 1 || orderSaving ? 0.45 : 1 }}>↓</button>
+                    <button type="button" onClick={() => void duplicateProduct(product)} disabled={duplicatingId === product.id} style={{ gridColumn: "1 / -1", border: "1px solid #ddd", background: "#fff", padding: "6px 4px", cursor: "pointer", fontSize: 9 }}>{duplicatingId === product.id ? "COPYING..." : "DUPLICATE"}</button>
+                    <button type="button" onClick={() => editProduct(product)} style={{ gridColumn: "1 / -1", border: "1px solid #ddd", background: "#fff", padding: "6px 4px", cursor: "pointer", fontSize: 9 }}>EDIT</button>
+                    <button type="button" onClick={() => deleteProduct(product)} style={{ gridColumn: "1 / -1", border: "1px solid #f3c6c6", background: "#fff", color: "#b42318", padding: "6px 4px", cursor: "pointer", fontSize: 9 }}>DELETE</button>
+                  </div>
+                </article>
+              );
+            })}
           </aside>
         </div>
         ) : <div style={{ maxWidth: 1180, margin: "0 auto", display: "grid", gap: 16 }}>

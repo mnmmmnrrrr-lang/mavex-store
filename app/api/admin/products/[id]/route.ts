@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { ADMIN_COOKIE, isAdminSessionValid } from "../../../../../lib/admin-auth";
 import { CatalogProduct, parseColorProductLinks } from "../../../../../lib/admin-store";
-import { getCatalogProduct } from "../../../../../lib/catalog-server";
+import { getCatalogProduct, getCatalogProducts } from "../../../../../lib/catalog-server";
+import { validateColorProductLinks } from "../../../../../lib/color-product-links";
 import { deleteCatalogProduct, deleteProductImage, deleteProductVideo, getProductImagePublicUrl, getProductVideoPublicUrl, isProductImagePath, isProductVideoPath, saveCatalogProduct, saveProductImage } from "../../../../../lib/store-db";
 
 type VariantInput = { id?: string; color?: unknown; size?: unknown; stock_quantity?: unknown; price_override?: unknown; is_active?: unknown };
@@ -21,6 +23,80 @@ function parseProductImagePaths(form: FormData) {
   } catch (error) {
     if (error instanceof Error && error.message === "Invalid product image upload.") throw error;
     throw new Error("Invalid product image upload.");
+  }
+}
+
+async function deleteSupersededMedia(productId: string, imageUrls: string[], videoUrl: string | null) {
+  let products: CatalogProduct[];
+  try {
+    products = await getCatalogProducts(true);
+  } catch (error) {
+    console.error("Could not verify whether replaced product media is shared; keeping old files:", error);
+    return;
+  }
+
+  const otherProducts = products.filter((product) => product.id !== productId);
+  const referencedImages = new Set(otherProducts.flatMap((product) => product.product_images.map((image) => image.image_url)));
+  const referencedVideos = new Set(otherProducts.map((product) => product.product_video_url).filter((url): url is string => Boolean(url)));
+  await Promise.all(imageUrls.filter((url) => !referencedImages.has(url)).map((url) =>
+    deleteProductImage(url).catch((error) => console.error("Could not remove a replaced product photo:", error)),
+  ));
+  if (videoUrl && !referencedVideos.has(videoUrl)) {
+    await deleteProductVideo(videoUrl).catch((error) => console.error("Could not remove the replaced product video:", error));
+  }
+}
+
+export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  if (!isAuthorized(request)) return NextResponse.json({ error: "Please log in to the admin panel." }, { status: 401 });
+  const { id } = await params;
+
+  try {
+    const current = await getCatalogProduct(id, true);
+    if (!current) return NextResponse.json({ error: "Product not found." }, { status: 404 });
+
+    const body: unknown = await request.json();
+    if (!body || typeof body !== "object") throw new Error("Enter a valid price and stock update.");
+    const draft = body as { price?: unknown; variants?: unknown };
+    const price = Number(draft.price);
+    if (!Number.isFinite(price) || price <= 0) throw new Error("Enter a valid price greater than zero.");
+    if (!Array.isArray(draft.variants) || draft.variants.length !== current.product_variants.length) {
+      throw new Error("The stock update does not match this product's sizes.");
+    }
+
+    const stocks = new Map<string, number>();
+    for (const value of draft.variants) {
+      if (!value || typeof value !== "object") throw new Error("Enter a valid stock count for every size.");
+      const variant = value as { id?: unknown; stock_quantity?: unknown };
+      if (typeof variant.id !== "string" || stocks.has(variant.id)) throw new Error("The stock update contains an invalid size.");
+      if (typeof variant.stock_quantity === "string" && !variant.stock_quantity.trim()) throw new Error("Enter a stock count for every size.");
+      const stock = Number(variant.stock_quantity);
+      if (!Number.isInteger(stock) || stock < 0) throw new Error("Stock must be a whole number of zero or more.");
+      stocks.set(variant.id, stock);
+    }
+
+    const currentVariantIds = new Set(current.product_variants.map((variant) => variant.id));
+    if (stocks.size !== currentVariantIds.size || [...stocks.keys()].some((variantId) => !currentVariantIds.has(variantId))) {
+      throw new Error("The stock update contains a size that does not belong to this product.");
+    }
+
+    const updated: CatalogProduct = {
+      ...current,
+      price,
+      compare_at_price: current.compare_at_price !== null && current.compare_at_price <= price
+        ? null
+        : current.compare_at_price,
+      product_variants: current.product_variants.map((variant) => ({
+        ...variant,
+        stock_quantity: stocks.get(variant.id)!,
+      })),
+    };
+
+    await saveCatalogProduct(updated);
+    revalidatePath("/", "page");
+    revalidatePath("/product/[id]", "page");
+    return NextResponse.json(updated);
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Could not save price and stock." }, { status: 400 });
   }
 }
 
@@ -55,6 +131,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       ? parseColorProductLinks(form.get("colorProductLinks"))
       : current.color_product_links || [];
     if (colorProductLinks.some((link) => link.product_id === id)) throw new Error("A product cannot link to itself as another color.");
+    await validateColorProductLinks(id, name, colorProductLinks);
 
     let inputVariants: VariantInput[];
     try {
@@ -144,12 +221,13 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     await saveCatalogProduct(nextProduct);
-    if (replaceProductImages) {
-      await Promise.all(current.product_images.map((image) => deleteProductImage(image.image_url).catch((cleanupError) => console.error("Could not remove a replaced product image:", cleanupError))));
-    }
-    if (current.product_video_url && current.product_video_url !== nextProduct.product_video_url) {
-      await deleteProductVideo(current.product_video_url).catch((cleanupError) => console.error("Could not remove the replaced product video:", cleanupError));
-    }
+    revalidatePath("/", "page");
+    revalidatePath("/product/[id]", "page");
+    const oldImages = replaceProductImages ? current.product_images.map((image) => image.image_url) : [];
+    const oldVideo = current.product_video_url && current.product_video_url !== nextProduct.product_video_url
+      ? current.product_video_url
+      : null;
+    if (oldImages.length || oldVideo) await deleteSupersededMedia(id, oldImages, oldVideo);
     uploadedVideoPath = "";
     uploadedImagePaths = [];
     uploadedLegacyImageUrls = [];
