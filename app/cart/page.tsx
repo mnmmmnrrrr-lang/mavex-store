@@ -2,6 +2,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 
 type CartItem = {
@@ -86,13 +87,17 @@ export default function CartPage() {
           <>
             {cart.map((item, index) => (
               <div className="cart-item" key={index}>
-                <img
-                  src={item.image}
-                  alt={item.name}
-                  className="cart-item-image"
-                  loading="lazy"
-                  decoding="async"
-                />
+                {item.image ? (
+                  <Image
+                    src={item.image}
+                    alt={item.name}
+                    className="cart-item-image"
+                    width={100}
+                    height={130}
+                    sizes="(max-width: 700px) 85px, 100px"
+                    quality={80}
+                  />
+                ) : <div className="cart-item-image" aria-hidden="true" />}
 
                 <div className="cart-item-info">
                   <h3>{item.name}</h3>

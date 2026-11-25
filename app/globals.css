@@ -17,6 +17,64 @@ body {
   font-family: var(--font-inter), sans-serif;
 }
 
+.mavex-skeleton {
+  background: linear-gradient(90deg, #eee 25%, #f6f6f6 38%, #eee 62%);
+  background-size: 400% 100%;
+  animation: mavex-skeleton-wave 1.4s ease infinite;
+}
+
+.mavex-skeleton-title {
+  width: min(360px, 65%);
+  height: 34px;
+  margin-bottom: 28px;
+}
+
+.mavex-skeleton-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 20px;
+}
+
+.mavex-skeleton-product {
+  aspect-ratio: 4 / 5;
+}
+
+.mavex-product-skeleton {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
+  gap: 35px;
+  max-width: 1150px;
+  margin: 25px auto;
+}
+
+.mavex-skeleton-gallery {
+  aspect-ratio: 4 / 5;
+}
+
+.mavex-skeleton-line {
+  height: 16px;
+  margin: 18px 0;
+}
+
+.mavex-skeleton-short {
+  width: 35%;
+}
+
+.mavex-skeleton-name {
+  width: 85%;
+  height: 32px;
+}
+
+.mavex-skeleton-action {
+  height: 54px;
+  margin-top: 26px;
+}
+
+@keyframes mavex-skeleton-wave {
+  0% { background-position: 100% 0; }
+  100% { background-position: 0 0; }
+}
+
 button, a {
   -webkit-tap-highlight-color: transparent;
 }
@@ -489,6 +547,20 @@ footer small {
 }
 
 @media (max-width: 700px) {
+  .mavex-skeleton-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .mavex-product-skeleton {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 22px;
+  }
+
+  .mavex-skeleton-gallery {
+    aspect-ratio: 1 / 1;
+  }
+
   .announcement {
     font-size: 9px;
     padding: 9px 5px;

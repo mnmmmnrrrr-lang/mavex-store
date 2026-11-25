@@ -2,6 +2,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Image from "next/image";
+import Link from "next/link";
 
 const governorates = [
   "Cairo", "Giza", "Alexandria", "Qalyubia", "Gharbia",
@@ -173,17 +175,17 @@ export default function CheckoutPage() {
         alignItems: "center",
         padding: "12px 0 25px"
       }}>
-        <a href="/" style={{
+        <Link href="/" style={{
           fontSize: 29,
           fontWeight: 900,
           color: "#111",
           textDecoration: "none"
-        }}>MAVEX®</a>
+        }}>MAVEX®</Link>
 
-        <a href="/cart" style={{ color: "#111", fontSize: 12 }}>
+        <Link href="/cart" style={{ color: "#111", fontSize: 12 }}>
           BACK TO BAG
-        </a>
-        <a href="/account" style={{ color: "#111", fontSize: 12 }}>MY ORDERS</a>
+        </Link>
+        <Link href="/account" style={{ color: "#111", fontSize: 12 }}>MY ORDERS</Link>
       </header>
 
       <h1 style={{ fontSize: 32, marginBottom: 8 }}>
@@ -413,7 +415,7 @@ export default function CheckoutPage() {
               {message}
             </p>
           )}
-          {recentOrderId && <p style={{ marginTop: 12, fontSize: 13 }}><a href="/account" style={{ color: "#5e2a49", fontWeight: 700 }}>Sign in to My Orders to track this order</a></p>}
+          {recentOrderId && <p style={{ marginTop: 12, fontSize: 13 }}><Link href="/account" style={{ color: "#5e2a49", fontWeight: 700 }}>Sign in to My Orders to track this order</Link></p>}
         </section>
 
         <aside style={{
@@ -432,12 +434,10 @@ export default function CheckoutPage() {
               gap: 12,
               marginBottom: 16
             }}>
-              <img src={item.image} alt={item.name} loading="lazy" decoding="async"
-                style={{
-                  width: 65,
-                  height: 75,
-                  objectFit: "cover"
-                }} />
+              {item.image ? (
+                <Image src={item.image} alt={item.name} width={65} height={75} sizes="65px" quality={80}
+                  style={{ width: 65, height: 75, objectFit: "cover" }} />
+              ) : <div aria-hidden="true" style={{ width: 65, height: 75, background: "#f2f2f2" }} />}
 
               <div style={{ flex: 1 }}>
                 <strong style={{ fontSize: 12 }}>{item.name}</strong>
@@ -477,7 +477,7 @@ export default function CheckoutPage() {
         <p style={{ fontSize: 11, color: "#777", marginTop: 10 }}>
           STREET CULTURE. OWN YOUR STYLE.
         </p>
-        <a href="/returns" style={{ display: "inline-block", marginTop: 12, color: "#555", fontSize: 12 }}>RETURNS &amp; EXCHANGES</a>
+        <Link href="/returns" style={{ display: "inline-block", marginTop: 12, color: "#555", fontSize: 12 }}>RETURNS &amp; EXCHANGES</Link>
       </footer>
 
       <style jsx>{`

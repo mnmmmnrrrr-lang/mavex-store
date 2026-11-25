@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 
@@ -538,7 +539,7 @@ export default function AdminPage() {
               </div>
 
               <label htmlFor="product-images" style={{ ...labelStyle, marginTop: 18 }}>Product photos (up to 8 images, 5 MB each)</label>
-              {editingProduct?.product_images?.length ? <div style={{ display: "flex", gap: 7, overflowX: "auto", margin: "8px 0" }}>{editingProduct.product_images.map((photo, index) => <img key={photo.image_url} src={photo.image_url} alt={`${editingProduct.name} ${index + 1}`} style={{ width: 58, height: 66, objectFit: "cover", borderRadius: 5 }} />)}</div> : null}
+              {editingProduct?.product_images?.length ? <div style={{ display: "flex", gap: 7, overflowX: "auto", margin: "8px 0" }}>{editingProduct.product_images.map((photo, index) => <Image key={photo.image_url} src={photo.image_url} alt={`${editingProduct.name} ${index + 1}`} width={58} height={66} sizes="58px" quality={80} style={{ width: 58, height: 66, objectFit: "cover", borderRadius: 5 }} />)}</div> : null}
               <input id="product-images" type="file" multiple accept="image/png,image/jpeg,image/webp" required={!editingId} onChange={(event) => setImages(Array.from(event.target.files || []))} style={{ ...inputStyle, padding: 9 }} />
               {images.length > 0 && <p style={{ color: "#555", fontSize: 11, marginTop: 6 }}>{images.length} photo(s) selected. They will be added to the existing product photos.</p>}
 
@@ -561,7 +562,7 @@ export default function AdminPage() {
             <h2 style={{ margin: "8px 0 18px", fontSize: 22 }}>Products ({products.length})</h2>
             {products.length === 0 ? <p style={{ color: "#777", fontSize: 13 }}>No products found.</p> : products.map((product) => (
               <article key={product.id} style={{ display: "grid", gridTemplateColumns: "58px 1fr auto", gap: 10, alignItems: "center", padding: "12px 0", borderTop: "1px solid #eee" }}>
-                <img src={product.product_images[0]?.image_url || ""} alt={product.name} style={{ width: 58, height: 68, objectFit: "cover", background: "#f2f2f2" }} />
+                {product.product_images[0]?.image_url ? <Image src={product.product_images[0].image_url} alt={product.name} width={58} height={68} sizes="58px" quality={80} style={{ width: 58, height: 68, objectFit: "cover", background: "#f2f2f2" }} /> : <div style={{ width: 58, height: 68, background: "#f2f2f2" }} />}
                 <div>
                   <strong style={{ fontSize: 12 }}>{product.name}</strong>
                   <p style={{ marginTop: 4, fontSize: 11, color: "#555" }}>EGP {product.price.toLocaleString("en-EG")}{product.compare_at_price ? " · was EGP " + product.compare_at_price.toLocaleString("en-EG") : ""}</p>
@@ -613,7 +614,7 @@ export default function AdminPage() {
                       <div style={{ display: "grid", gap: 9, marginTop: 10 }}>
                         {order.items.map((item, index) => (
                           <div key={`${order.id}-${index}`} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderTop: "1px solid #e8e8e8" }}>
-                            {item.image && <img src={item.image} alt={item.name} style={{ width: 54, height: 64, objectFit: "cover", borderRadius: 4, background: "#eee" }} />}
+                            {item.image && <Image src={item.image} alt={item.name} width={54} height={64} sizes="54px" quality={80} style={{ width: 54, height: 64, objectFit: "cover", borderRadius: 4, background: "#eee" }} />}
                             <p style={{ fontSize: 13, lineHeight: 1.7 }}>{item.name}<br />Color: {item.color || "—"} · Size: {item.size} · Quantity: {item.quantity}<br />Unit price: EGP {item.price.toLocaleString("en-EG")} · Line total: EGP {(item.price * item.quantity).toLocaleString("en-EG")}</p>
                           </div>
                         ))}

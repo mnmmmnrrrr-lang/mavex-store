@@ -1,4 +1,4 @@
-import { supabase } from "@/lib/supabase";
+import { hasSupabasePublic, supabase } from "@/lib/supabase";
 import { localProducts } from "@/lib/catalog";
 import { CatalogProduct } from "@/lib/admin-store";
 import { getCatalogOverlay } from "@/lib/store-db";
@@ -18,18 +18,18 @@ function toStorefrontProduct(product: Partial<CatalogProduct> & Pick<CatalogProd
 }
 
 export async function getStorefrontProducts(): Promise<StorefrontProduct[]> {
-  const [state, { data, error }] = await Promise.all([
-    getCatalogOverlay(),
-    supabase
+  const databaseQuery = hasSupabasePublic()
+    ? supabase
       .from("products")
       .select("id, name, description, price, compare_at_price, product_images(image_url, alt_text, sort_order)")
-      .eq("status", "active"),
-  ]);
-  if (error) console.error("Could not load database products:", error.message);
+      .eq("status", "active")
+    : null;
+  const [state, databaseResult] = await Promise.all([getCatalogOverlay(), databaseQuery]);
+  if (databaseResult?.error) console.error("Could not load database products:", databaseResult.error.message);
 
   const deleted = new Set(state.deletedIds);
   const merged = new Map<string, StorefrontProduct>();
-  for (const product of [...localProducts, ...state.products, ...((data || []) as unknown as CatalogProduct[])]) {
+  for (const product of [...localProducts, ...state.products, ...((databaseResult?.data || []) as unknown as CatalogProduct[])]) {
     if (deleted.has(product.id)) continue;
     merged.set(product.id, toStorefrontProduct({ ...product, ...state.overrides[product.id] }));
   }
@@ -44,19 +44,19 @@ export async function getRelatedStorefrontProducts(
   group: "tops" | "bottoms",
   limit = 4
 ): Promise<StorefrontProduct[]> {
-  const [state, { data, error }] = await Promise.all([
-    getCatalogOverlay(),
-    supabase
+  const databaseQuery = hasSupabasePublic()
+    ? supabase
       .from("products")
       .select("id, slug, name, price, compare_at_price, product_images(image_url, alt_text, sort_order)")
       .eq("status", "active")
-      .limit(24),
-  ]);
-  if (error) console.error("Could not load related database products:", error.message);
+      .limit(24)
+    : null;
+  const [state, databaseResult] = await Promise.all([getCatalogOverlay(), databaseQuery]);
+  if (databaseResult?.error) console.error("Could not load related database products:", databaseResult.error.message);
 
   const deleted = new Set(state.deletedIds);
   const merged = new Map<string, CatalogProduct>();
-  for (const product of [...localProducts, ...state.products, ...((data || []) as unknown as CatalogProduct[])]) {
+  for (const product of [...localProducts, ...state.products, ...((databaseResult?.data || []) as unknown as CatalogProduct[])]) {
     if (deleted.has(product.id)) continue;
     const override = state.overrides[product.id];
     merged.set(product.id, override ? { ...product, ...override } : product);
@@ -78,9 +78,10 @@ export async function getCatalogProducts(includeInactive = false): Promise<Catal
   const state = await getCatalogOverlay();
   let databaseProducts: CatalogProduct[] = [];
 
-  let query = supabase
-    .from("products")
-    .select(`
+  if (hasSupabasePublic()) {
+    let query = supabase
+      .from("products")
+      .select(`
       id,
       name,
       slug,
@@ -91,14 +92,15 @@ export async function getCatalogProducts(includeInactive = false): Promise<Catal
       is_featured,
       product_images(image_url, alt_text, sort_order),
       product_variants(id, color, size, stock_quantity, price_override, is_active)
-    `);
-  if (!includeInactive) query = query.eq("status", "active");
+      `);
+    if (!includeInactive) query = query.eq("status", "active");
 
-  const { data, error } = await query;
-  if (error) {
-    console.error("Could not load database products:", error.message);
-  } else {
-    databaseProducts = (data ?? []) as unknown as CatalogProduct[];
+    const { data, error } = await query;
+    if (error) {
+      console.error("Could not load database products:", error.message);
+    } else {
+      databaseProducts = (data ?? []) as unknown as CatalogProduct[];
+    }
   }
 
   const deleted = new Set(state.deletedIds);
@@ -118,14 +120,17 @@ export async function getCatalogProducts(includeInactive = false): Promise<Catal
 export async function getCatalogProduct(id: string, includeInactive = false) {
   const localProduct = localProducts.find((product) => product.id === id || product.slug === id) as CatalogProduct | undefined;
   const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  let query = supabase
-    .from("products")
-    .select("id, name, slug, description, price, compare_at_price, status, product_images(image_url, alt_text, sort_order), product_variants(id, color, size, stock_quantity, price_override, is_active)");
-  query = uuidPattern.test(id) ? query.eq("id", id) : query.eq("slug", id);
-  if (!includeInactive) query = query.eq("status", "active");
-  const { data, error } = await query.maybeSingle();
-  if (error) console.error("Could not load database product:", error.message);
-  const databaseProduct = data as unknown as CatalogProduct | null;
+  let databaseProduct: CatalogProduct | null = null;
+  if (hasSupabasePublic()) {
+    let query = supabase
+      .from("products")
+      .select("id, name, slug, description, price, compare_at_price, status, product_images(image_url, alt_text, sort_order), product_variants(id, color, size, stock_quantity, price_override, is_active)");
+    query = uuidPattern.test(id) ? query.eq("id", id) : query.eq("slug", id);
+    if (!includeInactive) query = query.eq("status", "active");
+    const { data, error } = await query.maybeSingle();
+    if (error) console.error("Could not load database product:", error.message);
+    else databaseProduct = data as unknown as CatalogProduct | null;
+  }
   const productId = databaseProduct?.id || localProduct?.id || id;
 
   if (hasSupabaseAdmin()) {
