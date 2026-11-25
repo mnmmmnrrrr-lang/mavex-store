@@ -444,7 +444,7 @@ function ProductContent({ initialProduct, initialRelatedProducts }: ProductClien
                   alt={product.name}
                     fill
                     sizes="(max-width: 700px) 100vw, 58vw"
-                    quality={80}
+                    quality={95}
                     priority={imageIndex === 0}
                   style={{ width: "100%", height: "100%", objectFit: "cover" }}
                 />
@@ -531,7 +531,7 @@ function ProductContent({ initialProduct, initialRelatedProducts }: ProductClien
                       width={130}
                       height={160}
                       sizes="72px"
-                      quality={80}
+                      quality={90}
                       style={{ width: "100%", height: "100%", objectFit: "cover" }}
                     />
                   )}
@@ -914,7 +914,7 @@ function ProductContent({ initialProduct, initialRelatedProducts }: ProductClien
                 <article className="product-card" key={item.id}>
                   <Link href={`/product/${encodeURIComponent(item.id)}`}>
                     {image ? (
-                      <Image className="product-image" src={image.image_url} alt={image.alt_text || item.name} width={700} height={850} sizes="(max-width: 700px) 50vw, 25vw" quality={80} />
+                      <Image className="product-image" src={image.image_url} alt={image.alt_text || item.name} width={700} height={850} sizes="(max-width: 700px) 50vw, 25vw" quality={90} />
                     ) : (
                       <div className="product-image" style={{ display: "grid", placeItems: "center", color: "#888" }}>MAVEX</div>
                     )}

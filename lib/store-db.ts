@@ -63,7 +63,7 @@ export async function saveProductImage(productId: string, image: File) {
   const extensions: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" };
   const extension = extensions[image.type];
   if (!extension) throw new Error("Choose a JPG, PNG, or WebP image.");
-  if (image.size === 0 || image.size > 5 * 1024 * 1024) throw new Error("Each image must be 5 MB or smaller.");
+  if (image.size === 0 || image.size > 20 * 1024 * 1024) throw new Error("Each image must be 20 MB or smaller.");
   const client = getSupabaseAdmin();
   const path = `${productId}/${crypto.randomUUID()}.${extension}`;
   const { error } = await client.storage.from("mavex-product-images").upload(path, Buffer.from(await image.arrayBuffer()), { contentType: image.type, upsert: false, cacheControl: "31536000" });
@@ -103,8 +103,12 @@ export function getProductImagePublicUrl(path: string) {
   return getSupabaseAdmin().storage.from(PRODUCT_IMAGE_BUCKET).getPublicUrl(path).data.publicUrl;
 }
 
-export async function deleteProductImage(path: string) {
-  if (!isProductImagePath(path)) return;
+export async function deleteProductImage(pathOrUrl: string) {
+  const path = pathOrUrl.includes("/storage/v1/object/public/mavex-product-images/")
+    ? pathOrUrl.split("/storage/v1/object/public/mavex-product-images/").pop() || ""
+    : pathOrUrl;
+  const legacyPath = /^[a-z0-9-]+\/[0-9a-f-]+\.(jpg|png|webp)$/i.test(path);
+  if (!isProductImagePath(path) && !legacyPath) return;
   const { error } = await getSupabaseAdmin().storage.from(PRODUCT_IMAGE_BUCKET).remove([path]);
   if (error) throw new Error(`Could not remove the product image: ${error.message}`);
 }

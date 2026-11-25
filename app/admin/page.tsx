@@ -44,27 +44,6 @@ type OperationsData = {
 type ProductMediaKind = "image" | "video";
 type UploadedProductMedia = { kind: ProductMediaKind; path: string };
 
-async function optimizeProductImage(file: File): Promise<File> {
-  try {
-    const bitmap = await createImageBitmap(file);
-    const scale = Math.min(1, 1200 / Math.max(bitmap.width, bitmap.height));
-    const canvas = document.createElement("canvas");
-    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
-    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
-    const context = canvas.getContext("2d");
-    if (!context) return file;
-    context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-    bitmap.close();
-
-    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/webp", 0.86));
-    if (!blob) return file;
-    const baseName = file.name.replace(/\.[^.]+$/, "") || "product-image";
-    return new File([blob], `${baseName}.webp`, { type: "image/webp", lastModified: file.lastModified });
-  } catch {
-    return file;
-  }
-}
-
 const sizes = ["XS", "S", "M", "L", "XL", "XXL"];
 const standardMeasurements: Record<string, { label: string; width: string; length: string }> = {
   XS: { label: "XS", width: "54", length: "70" },
@@ -170,7 +149,9 @@ async function fetchAdminCatalog(): Promise<AdminProduct[] | null> {
 }
 
 async function uploadProductMedia(file: File, kind: ProductMediaKind): Promise<UploadedProductMedia> {
-  const uploadFile = kind === "image" ? await optimizeProductImage(file) : file;
+  // Keep the original pixels and file format. Next Image creates responsive
+  // delivery variants when the photo is displayed on the storefront.
+  const uploadFile = file;
   const signingResponse = await fetch("/api/admin/product-media-upload", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -210,6 +191,7 @@ export default function AdminPage() {
   const [sizeGuideWidthLabel, setSizeGuideWidthLabel] = useState("WIDTH");
   const [sizeGuideLengthLabel, setSizeGuideLengthLabel] = useState("LENGTH");
   const [images, setImages] = useState<File[]>([]);
+  const [replaceProductImages, setReplaceProductImages] = useState(false);
   const [video, setVideo] = useState<File | null>(null);
   const [removeVideo, setRemoveVideo] = useState(false);
   const [activeTab, setActiveTab] = useState<"products" | "orders" | "returns" | "comments">("products");
@@ -286,6 +268,7 @@ export default function AdminPage() {
     setSizeGuideWidthLabel("WIDTH");
     setSizeGuideLengthLabel("LENGTH");
     setImages([]);
+    setReplaceProductImages(false);
     setVideo(null);
     setRemoveVideo(false);
     const fileInput = document.querySelector<HTMLInputElement>("#product-images");
@@ -326,6 +309,7 @@ export default function AdminPage() {
     }
     setSizeMeasurements(guide);
     setImages([]);
+    setReplaceProductImages(false);
     setVideo(null);
     setRemoveVideo(false);
     setMessage("");
@@ -364,12 +348,16 @@ export default function AdminPage() {
       setMessage("Choose at least one product photo.");
       return;
     }
-    if (images.length > 8 || (editingProduct && editingProduct.product_images.length + images.length > 8)) {
+    if (replaceProductImages && images.length === 0) {
+      setMessage("Choose the original photos you want to use before replacing the current photos.");
+      return;
+    }
+    if (images.length > 8 || (editingProduct && !replaceProductImages && editingProduct.product_images.length + images.length > 8)) {
       setMessage("A product can have up to 8 photos.");
       return;
     }
-    if (images.some((image) => image.size > 5 * 1024 * 1024)) {
-      setMessage("Each product photo must be 5 MB or smaller.");
+    if (images.some((image) => image.size > 20 * 1024 * 1024)) {
+      setMessage("Each product photo must be 20 MB or smaller.");
       return;
     }
     if (images.some((image) => !["image/jpeg", "image/png", "image/webp"].includes(image.type))) {
@@ -413,6 +401,7 @@ export default function AdminPage() {
       length: sizeMeasurements[size]?.length,
     }))));
     form.set("removeVideo", removeVideo ? "true" : "false");
+    form.set("replaceProductImages", replaceProductImages ? "true" : "false");
 
     const uploadedMedia: UploadedProductMedia[] = [];
     try {
@@ -619,10 +608,11 @@ export default function AdminPage() {
                 </div>
               </div>
 
-              <label htmlFor="product-images" style={{ ...labelStyle, marginTop: 18 }}>Product photos (up to 8 images, 5 MB each)</label>
+              <label htmlFor="product-images" style={{ ...labelStyle, marginTop: 18 }}>Product photos (up to 8 images, 20 MB each)</label>
               {editingProduct?.product_images?.length ? <div style={{ display: "flex", gap: 7, overflowX: "auto", margin: "8px 0" }}>{editingProduct.product_images.map((photo, index) => <Image key={photo.image_url} src={photo.image_url} alt={`${editingProduct.name} ${index + 1}`} width={58} height={66} sizes="58px" quality={80} style={{ width: 58, height: 66, objectFit: "cover", borderRadius: 5 }} />)}</div> : null}
-              <input id="product-images" type="file" multiple accept="image/png,image/jpeg,image/webp" required={!editingId} onChange={(event) => setImages(Array.from(event.target.files || []))} style={{ ...inputStyle, padding: 9 }} />
-              {images.length > 0 && <p style={{ color: "#555", fontSize: 11, marginTop: 6 }}>{images.length} photo(s) selected. They will be added to the existing product photos.</p>}
+              {editingId && <label style={{ display: "flex", alignItems: "center", gap: 8, margin: "8px 0", fontSize: 12, color: "#444" }}><input type="checkbox" checked={replaceProductImages} onChange={(event) => setReplaceProductImages(event.target.checked)} />Replace current photos with the original quality photos selected below</label>}
+              <input id="product-images" type="file" multiple accept="image/png,image/jpeg,image/webp" required={!editingId || replaceProductImages} onChange={(event) => setImages(Array.from(event.target.files || []))} style={{ ...inputStyle, padding: 9 }} />
+              {images.length > 0 && <p style={{ color: "#555", fontSize: 11, marginTop: 6 }}>{images.length} photo(s) selected. {replaceProductImages ? "They will replace the current photos." : "They will be added to the existing product photos."}</p>}
 
               <label htmlFor="product-video" style={{ ...labelStyle, marginTop: 18 }}>Product video (optional, MP4/WebM/MOV, up to 30 MB)</label>
               {editingProduct?.product_video_url && <div style={{ margin: "8px 0" }}>{!removeVideo && <video src={editingProduct.product_video_url} controls playsInline preload="metadata" style={{ display: "block", width: "min(100%, 360px)", maxHeight: 240, background: "#111", borderRadius: 6 }} />}<label style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 8, fontSize: 12 }}><input type="checkbox" checked={removeVideo} onChange={(event) => setRemoveVideo(event.target.checked)} />Remove current video</label></div>}

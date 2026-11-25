@@ -85,7 +85,7 @@ export default async function Home() {
                     width={700}
                     height={850}
                     sizes="(max-width: 700px) 50vw, (max-width: 1100px) 33vw, 25vw"
-                    quality={80}
+                    quality={90}
                     loading="lazy"
                   />
                   <h3>{product.name}</h3>

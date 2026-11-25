@@ -126,14 +126,21 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
     const images = form.getAll("images").filter((value): value is File => value instanceof File && value.size > 0);
     const addedImageCount = uploadedImagePaths.length + images.length;
-    if (addedImageCount > 8 || current.product_images.length + addedImageCount > 8) throw new Error("A product can have up to 8 photos. Remove some before adding more.");
+    const replaceProductImages = form.get("replaceProductImages") === "true";
+    if (replaceProductImages && addedImageCount === 0) throw new Error("Choose original photos before replacing the current photos.");
+    if (addedImageCount > 8 || (!replaceProductImages && current.product_images.length + addedImageCount > 8)) throw new Error("A product can have up to 8 photos. Remove some before adding more.");
     if (addedImageCount) {
-      const uploadedImages = uploadedImagePaths.map((path, index) => ({ image_url: getProductImagePublicUrl(path), alt_text: name, sort_order: current!.product_images.length + index }));
-      const legacyImages = await Promise.all(images.map(async (image, index) => ({ image_url: await saveProductImage(id, image), alt_text: name, sort_order: current!.product_images.length + uploadedImagePaths.length + index })));
-      nextProduct.product_images = [...current.product_images, ...uploadedImages, ...legacyImages];
+      const startingOrder = replaceProductImages ? 0 : current.product_images.length;
+      const uploadedImages = uploadedImagePaths.map((path, index) => ({ image_url: getProductImagePublicUrl(path), alt_text: name, sort_order: startingOrder + index }));
+      const legacyImages = await Promise.all(images.map(async (image, index) => ({ image_url: await saveProductImage(id, image), alt_text: name, sort_order: startingOrder + uploadedImagePaths.length + index })));
+      const newImages = [...uploadedImages, ...legacyImages];
+      nextProduct.product_images = replaceProductImages ? newImages : [...current.product_images, ...newImages];
     }
 
     await saveCatalogProduct(nextProduct);
+    if (replaceProductImages) {
+      await Promise.all(current.product_images.map((image) => deleteProductImage(image.image_url).catch((cleanupError) => console.error("Could not remove a replaced product image:", cleanupError))));
+    }
     if (current.product_video_url && current.product_video_url !== nextProduct.product_video_url) {
       await deleteProductVideo(current.product_video_url).catch((cleanupError) => console.error("Could not remove the replaced product video:", cleanupError));
     }
