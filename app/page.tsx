@@ -38,7 +38,11 @@ export default async function Home() {
       <div className="announcement">MAVEX STREETWEAR — NEW COLLECTION 2026</div>
 
       <header className="navbar">
-        <h1 className="logo">MAVEX®</h1>
+        <h1 className="logo">
+          <Link href="/" aria-label="MAVEX home">
+            <Image src="/mavex-logo.png" alt="MAVEX®" width={436} height={302} sizes="(max-width: 700px) 110px, 130px" quality={95} priority />
+          </Link>
+        </h1>
         <nav>
           <Link href="#home">HOME</Link>
           <Link href="#shop">SHOP</Link>
