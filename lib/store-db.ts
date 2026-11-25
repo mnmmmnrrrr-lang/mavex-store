@@ -149,6 +149,23 @@ export async function savePaymentProof(dataUrl: string, orderId: string) {
   return path;
 }
 
+export async function saveReturnEvidence(file: File, returnId: string) {
+  const extensions: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" };
+  const extension = extensions[file.type];
+  if (!extension) throw new Error("Choose a JPG, PNG, or WebP photo.");
+  if (!file.size || file.size > 3 * 1024 * 1024) throw new Error("The issue photo must be 3 MB or smaller.");
+  const path = `returns/${returnId}/${crypto.randomUUID()}.${extension}`;
+  const { error } = await getSupabaseAdmin().storage.from("mavex-payment-proofs").upload(path, Buffer.from(await file.arrayBuffer()), { contentType: file.type, upsert: false });
+  if (error) throw new Error(`Could not upload the issue photo: ${error.message}`);
+  return path;
+}
+
+export async function deleteReturnEvidence(path: string) {
+  if (!/^returns\/RET-[A-Z0-9-]+\/[0-9a-f-]+\.(jpg|png|webp)$/i.test(path)) return;
+  const { error } = await getSupabaseAdmin().storage.from("mavex-payment-proofs").remove([path]);
+  if (error) throw new Error(`Could not remove the issue photo: ${error.message}`);
+}
+
 export async function getPaymentProofLink(path: string) {
   const { data, error } = await getSupabaseAdmin().storage.from("mavex-payment-proofs").createSignedUrl(path, 60 * 15);
   if (error) throw new Error(`Could not create a payment-proof link: ${error.message}`);

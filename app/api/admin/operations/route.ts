@@ -9,7 +9,13 @@ export async function GET(request: NextRequest) {
   try {
     const [orders, returns, comments] = await Promise.all([listOrders(), listReturns(), listComments()]);
     const withProofLinks = await Promise.all(orders.map(async order => ({ ...order, proof: order.proof ? await getPaymentProofLink(order.proof) : "" })));
-    return NextResponse.json({ orders: withProofLinks, returns, comments }, { headers: { "Cache-Control": "no-store" } });
+    const withEvidenceLinks = await Promise.all(returns.map(async item => ({
+      ...item,
+      evidence: undefined,
+      evidenceUrl: item.evidence ? await getPaymentProofLink(item.evidence) : "",
+      messages: item.messages?.length ? item.messages : [{ id: item.id, sender: "customer" as const, text: item.issue, date: item.date }],
+    })));
+    return NextResponse.json({ orders: withProofLinks, returns: withEvidenceLinks, comments }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Could not load store operations." }, { status: 503 });
   }

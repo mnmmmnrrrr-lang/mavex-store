@@ -38,7 +38,7 @@ type AdminProduct = {
 };
 type OperationsData = {
   orders: { id: string; customer: { name: string; phone: string; email?: string; phone2?: string; city: string; village: string; street: string; building?: string; notes?: string }; governorate: string; items: { name: string; size: string; color?: string; quantity: number; price: number; image?: string }[]; subtotal: number; shipping: number; total: number; payment: string; transaction?: string; proof?: string; status: string; date: string; trackingNumber?: string }[];
-  returns: { id: string; orderId: string; customerName: string; email?: string; phone?: string; issue: string; date: string; status: string }[];
+  returns: { id: string; orderId: string; customerName: string; email?: string; phone?: string; issue: string; evidenceUrl?: string; messages?: { id: string; sender: "customer" | "admin"; text: string; date: string }[]; date: string; status: string }[];
   comments: { id: string; productId: string; productName: string; name: string; rating: number; message: string; date: string; status: string; reply?: string }[];
 };
 type ProductMediaKind = "image" | "video";
@@ -196,6 +196,7 @@ export default function AdminPage() {
   const [removeVideo, setRemoveVideo] = useState(false);
   const [activeTab, setActiveTab] = useState<"products" | "orders" | "returns" | "comments">("products");
   const [operations, setOperations] = useState<OperationsData>({ orders: [], returns: [], comments: [] });
+  const [returnReplies, setReturnReplies] = useState<Record<string, string>>({});
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -230,6 +231,22 @@ export default function AdminPage() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (activeTab !== "returns" || !loggedIn) return;
+    let cancelled = false;
+    const refreshReturns = async () => {
+      try {
+        const response = await fetch("/api/admin/operations", { cache: "no-store" });
+        if (!response.ok) return;
+        const result = await response.json() as Pick<OperationsData, "returns">;
+        if (!cancelled) setOperations((current) => ({ ...current, returns: result.returns }));
+      } catch { /* Keep the latest visible return data while offline. */ }
+    };
+    void refreshReturns();
+    const timer = window.setInterval(() => void refreshReturns(), 12000);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [activeTab, loggedIn]);
 
   async function login(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -473,6 +490,18 @@ export default function AdminPage() {
     await loadOperations();
   }
 
+  async function sendReturnReply(id: string) {
+    const text = (returnReplies[id] || "").trim();
+    if (!text) return;
+    const response = await fetch(`/api/admin/returns/${encodeURIComponent(id)}/messages`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }),
+    });
+    const result = await response.json();
+    if (!response.ok) { setMessage(result.error || "Could not send the reply."); return; }
+    setReturnReplies((current) => ({ ...current, [id]: "" }));
+    await loadOperations();
+  }
+
   async function deleteOrder(order: OperationsData["orders"][number]) {
     if (!window.confirm(`Permanently delete order ${order.id}? This cannot be undone.`)) return;
     setBusy(true);
@@ -702,7 +731,7 @@ export default function AdminPage() {
                       {isTransfer && <p style={{ marginTop: 7, fontSize: 13 }}>Transfer reference: {order.transaction || "Not provided"}</p>}
                       {isTransfer && order.proof && (
                         <a href={order.proof} target="_blank" rel="noreferrer" style={{ display: "block", width: "fit-content", maxWidth: "100%", marginTop: 10 }}>
-                          <img src={order.proof} alt={`${paymentName} payment proof for ${order.id}`} style={{ display: "block", width: "min(100%, 480px)", maxHeight: 640, objectFit: "contain", border: "1px solid #ddd", borderRadius: 6, background: "#fff" }} />
+                          <Image src={order.proof} alt={`${paymentName} payment proof for ${order.id}`} width={480} height={640} unoptimized style={{ display: "block", width: "min(100%, 480px)", height: "auto", maxHeight: 640, objectFit: "contain", border: "1px solid #ddd", borderRadius: 6, background: "#fff" }} />
                           <span style={{ display: "block", marginTop: 6, color: "#774061", fontSize: 12 }}>Open full-size payment proof</span>
                         </a>
                       )}
@@ -720,7 +749,29 @@ export default function AdminPage() {
               })}
             </section>
           )}
-          {activeTab === "returns" && <section style={{ background: "#fff", padding: 22, borderRadius: 12 }}><h1 style={{ marginBottom: 18 }}>Return Requests <small style={{ color: "#888", fontSize: 14 }}>({operations.returns.length})</small></h1><p style={{ marginBottom: 16, color: "#666" }}>Customer form: <Link href="/returns" style={{ color: "#7d3760" }}>/returns</Link></p>{operations.returns.length === 0 ? <p>No return requests yet.</p> : operations.returns.map(item => <article key={item.id} style={{ border: "1px solid #eee", borderRadius: 10, padding: 18, marginTop: 12 }}><div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}><strong>{item.id} · Order {item.orderId}</strong><select aria-label={`Status for ${item.id}`} value={item.status} onChange={e => void updateOperation("return", item.id, { status: e.target.value })} style={{ ...inputStyle, width: 190 }}>{["New", "Reviewing", "Approved", "Rejected", "Resolved"].map(s => <option key={s}>{s}</option>)}</select></div><p style={{ marginTop: 8 }}>{item.customerName} · {item.email || item.phone || "No contact email"} · {new Date(item.date).toLocaleString("en-EG")}</p><p style={{ marginTop: 12, background: "#fff7fb", padding: 13, borderRadius: 7, lineHeight: 1.7 }}>{item.issue}</p></article>)}</section>}
+          {activeTab === "returns" && <section style={{ background: "#fff", padding: 22, borderRadius: 12 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+              <h1>Return Requests <small style={{ color: "#888", fontSize: 14 }}>({operations.returns.length})</small></h1>
+              <button type="button" onClick={() => void loadOperations()} style={{ border: "1px solid #ddd", background: "#fff", padding: "9px 13px", cursor: "pointer" }}>REFRESH</button>
+            </div>
+            <p style={{ marginTop: 12, color: "#666" }}>Customer form: <Link href="/returns" style={{ color: "#7d3760" }}>/returns</Link></p>
+            {operations.returns.length === 0 ? <p style={{ marginTop: 18 }}>No return requests yet.</p> : operations.returns.map(item => <article key={item.id} style={{ border: "1px solid #eee", borderRadius: 10, padding: 18, marginTop: 16 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+                <strong>{item.id} · Order {item.orderId}</strong>
+                <select aria-label={`Status for ${item.id}`} value={item.status} onChange={e => void updateOperation("return", item.id, { status: e.target.value })} style={{ ...inputStyle, width: 190, marginTop: 0 }}>{["New", "Reviewing", "Approved", "Rejected", "Resolved"].map(s => <option key={s}>{s}</option>)}</select>
+              </div>
+              <p style={{ marginTop: 8 }}>{item.customerName} · {item.email || item.phone || "No contact email"} · {new Date(item.date).toLocaleString("en-EG")}</p>
+              <p style={{ marginTop: 12, background: "#fff7fb", padding: 13, borderRadius: 7, lineHeight: 1.7 }}>{item.issue}</p>
+              {item.evidenceUrl && <a href={item.evidenceUrl} target="_blank" rel="noreferrer" style={{ display: "inline-block", marginTop: 10 }}><Image src={item.evidenceUrl} alt={`Issue photo for ${item.id}`} width={280} height={220} unoptimized style={{ width: "min(100%,280px)", height: "auto", maxHeight: 240, objectFit: "contain", border: "1px solid #eee" }} /><span style={{ display: "block", color: "#7d3760", fontSize: 12 }}>View attached issue photo</span></a>}
+              <div style={{ display: "grid", gap: 9, maxHeight: 360, overflowY: "auto", marginTop: 16, padding: 12, background: "#f7f7f8", border: "1px solid #eee" }}>
+                {(item.messages || []).map(message => <article key={message.id} style={{ justifySelf: message.sender === "admin" ? "end" : "start", width: "min(90%,560px)", background: message.sender === "admin" ? "#fff0f8" : "#fff", border: "1px solid #e9e4e7", padding: 11 }}><strong style={{ fontSize: 11 }}>{message.sender === "admin" ? "MAVEX SUPPORT" : "CUSTOMER"}</strong><p style={{ margin: "6px 0", lineHeight: 1.6, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{message.text}</p><time style={{ color: "#777", fontSize: 10 }}>{new Date(message.date).toLocaleString("en-EG")}</time></article>)}
+              </div>
+              <form onSubmit={event => { event.preventDefault(); void sendReturnReply(item.id); }} style={{ display: "grid", gap: 8, marginTop: 12 }}>
+                <label style={labelStyle}>Reply to customer<textarea required maxLength={1200} rows={3} value={returnReplies[item.id] || ""} onChange={event => setReturnReplies(current => ({ ...current, [item.id]: event.target.value }))} placeholder="Write a reply..." style={{ ...inputStyle, resize: "vertical" }} /></label>
+                <button type="submit" style={{ justifySelf: "end", border: 0, borderRadius: 6, background: "#17213c", color: "#fff", padding: "10px 16px", fontWeight: 800, cursor: "pointer" }}>SEND REPLY</button>
+              </form>
+            </article>)}
+          </section>}
           {activeTab === "comments" && <section style={{ background: "#fff", padding: 22, borderRadius: 12 }}><h1 style={{ marginBottom: 18 }}>Product Comments <small style={{ color: "#888", fontSize: 14 }}>({operations.comments.length})</small></h1>{operations.comments.length === 0 ? <p>No comments yet.</p> : operations.comments.map(item => <article key={item.id} style={{ border: "1px solid #eee", borderRadius: 10, padding: 18, marginTop: 12 }}><div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}><div><strong>{item.productName}</strong><p style={{ marginTop: 5 }}>{item.name} · <span style={{ color: "#ca7b00" }}>{"★".repeat(item.rating)}{"☆".repeat(5-item.rating)}</span> · {new Date(item.date).toLocaleString("en-EG")}</p></div><span style={{ fontSize: 12, color: item.status === "pending" ? "#b56b00" : "#777" }}>{item.status}</span></div><p style={{ margin: "12px 0", lineHeight: 1.7 }}>{item.message}</p>{item.reply && <p style={{ color: "#555", fontSize: 12 }}>Admin reply: {item.reply}</p>}<div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}><button type="button" onClick={() => void updateOperation("comment", item.id, { status: item.status === "published" ? "hidden" : "published" })} style={{ border: 0, borderRadius: 6, background: "#17213c", color: "#fff", padding: "9px 13px", cursor: "pointer" }}>{item.status === "published" ? "Hide" : "Publish comment"}</button><button type="button" onClick={() => { const reply = window.prompt("Reply to this comment", item.reply || ""); if (reply !== null) void updateOperation("comment", item.id, { status: item.status === "published" ? "published" : "hidden", reply }); }} style={{ border: "1px solid #ddd", background: "#fff", borderRadius: 6, padding: "9px 13px", cursor: "pointer" }}>Reply</button><button type="button" onClick={() => { if (window.confirm("Permanently delete this comment?")) void updateOperation("comment", item.id, { action: "delete" }); }} style={{ border: "1px solid #efcaca", color: "#a22", background: "#fff", borderRadius: 6, padding: "9px 13px", cursor: "pointer" }}>Delete</button></div></article>)}</section>}
         </div>}
         </>

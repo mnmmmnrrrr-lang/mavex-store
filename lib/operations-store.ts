@@ -6,6 +6,7 @@ export type StoreOrder = {
   subtotal: number; shipping: number; total: number; payment: string; transaction?: string; proof?: string;
   status: string; date: string; trackingNumber?: string;
 };
-export type ReturnRequest = { id: string; orderId: string; customerName: string; email?: string; phone?: string; issue: string; date: string; status: string };
+export type ReturnMessage = { id: string; sender: "customer" | "admin"; text: string; date: string };
+export type ReturnRequest = { id: string; orderId: string; customerName: string; email?: string; phone?: string; issue: string; evidence?: string; messages?: ReturnMessage[]; date: string; status: string };
 export type ProductComment = { id: string; productId: string; productName: string; name: string; rating: number; message: string; date: string; status: "pending" | "published" | "hidden"; reply?: string };
 export const newOperationId = (prefix: string) => prefix + "-" + Date.now().toString(36).toUpperCase() + "-" + randomBytes(2).toString("hex").toUpperCase();
