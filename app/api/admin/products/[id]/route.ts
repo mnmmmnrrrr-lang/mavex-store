@@ -29,6 +29,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   const { id } = await params;
   let uploadedVideoPath = "";
   let uploadedImagePaths: string[] = [];
+  let uploadedLegacyImageUrls: string[] = [];
 
   try {
     const form = await request.formData();
@@ -47,6 +48,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     const compareValue = String(form.get("compareAtPrice") || "").trim();
     const compareAtPrice = compareValue ? Number(compareValue) : null;
     if (!name || name.length > 120) throw new Error("Enter a product name of 120 characters or fewer.");
+    if (description.length > 5000) throw new Error("Product description must be 5,000 characters or fewer.");
     if (!Number.isFinite(price) || price <= 0) throw new Error("Enter a valid price.");
     if (compareAtPrice !== null && (!Number.isFinite(compareAtPrice) || compareAtPrice < price)) throw new Error("The original price must be higher than the selling price.");
     const colorProductLinks = form.has("colorProductLinks")
@@ -92,7 +94,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     } catch { inputGuide = []; }
     const productSizes = [...new Set(variants.map((variant) => variant.size))];
     const sizeGuide = inputGuide
-      .filter((row) => productSizes.includes(String(row.size)) && Number(row.width) > 0 && Number(row.length) > 0)
+      .filter((row) => productSizes.includes(String(row.size)) && Number.isFinite(Number(row.width)) && Number(row.width) > 0 && Number(row.width) <= 500 && Number.isFinite(Number(row.length)) && Number(row.length) > 0 && Number(row.length) <= 500)
       .map((row) => ({ size: String(row.size), label: String(row.label || row.size).trim().slice(0, 30), width: Number(row.width), length: Number(row.length) }));
     if (sizeGuide.length !== productSizes.length) throw new Error("Enter the width and length for each product size.");
 
@@ -132,7 +134,11 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     if (addedImageCount) {
       const startingOrder = replaceProductImages ? 0 : current.product_images.length;
       const uploadedImages = uploadedImagePaths.map((path, index) => ({ image_url: getProductImagePublicUrl(path), alt_text: name, sort_order: startingOrder + index }));
-      const legacyImages = await Promise.all(images.map(async (image, index) => ({ image_url: await saveProductImage(id, image), alt_text: name, sort_order: startingOrder + uploadedImagePaths.length + index })));
+      const legacyImages = await Promise.all(images.map(async (image, index) => {
+        const imageUrl = await saveProductImage(id, image);
+        uploadedLegacyImageUrls.push(imageUrl);
+        return { image_url: imageUrl, alt_text: name, sort_order: startingOrder + uploadedImagePaths.length + index };
+      }));
       const newImages = [...uploadedImages, ...legacyImages];
       nextProduct.product_images = replaceProductImages ? newImages : [...current.product_images, ...newImages];
     }
@@ -146,10 +152,12 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     }
     uploadedVideoPath = "";
     uploadedImagePaths = [];
+    uploadedLegacyImageUrls = [];
     return NextResponse.json(nextProduct);
   } catch (error) {
     if (uploadedVideoPath) await deleteProductVideo(uploadedVideoPath).catch((cleanupError) => console.error("Could not clean up an unsaved product video:", cleanupError));
     await Promise.all(uploadedImagePaths.map((path) => deleteProductImage(path).catch((cleanupError) => console.error("Could not clean up an unsaved product image:", cleanupError))));
+    await Promise.all(uploadedLegacyImageUrls.map((path) => deleteProductImage(path).catch((cleanupError) => console.error("Could not clean up an unsaved product image:", cleanupError))));
     const message = error instanceof Error ? error.message : "Could not update the product.";
     return NextResponse.json({ error: message }, { status: 400 });
   }

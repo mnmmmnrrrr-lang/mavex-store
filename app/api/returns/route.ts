@@ -7,7 +7,11 @@ const validEmail = (value: string) => value.length <= 254 && /^[^\s@]+@[^\s@]+\.
 export async function POST(request: NextRequest) {
   let evidencePath = "";
   try {
-    const form = await request.formData();
+    const contentLength = Number(request.headers.get("content-length") || 0);
+    if (contentLength > 3 * 1024 * 1024 + 64 * 1024) return NextResponse.json({ error: "The return request is too large." }, { status: 413 });
+    let form: FormData;
+    try { form = await request.formData(); }
+    catch { return NextResponse.json({ error: "Invalid return request form." }, { status: 400 }); }
     const orderId = String(form.get("orderId") || "").trim().toUpperCase();
     const email = String(form.get("email") || "").trim().toLowerCase();
     const issue = String(form.get("issue") || "").trim();
@@ -38,9 +42,10 @@ export async function POST(request: NextRequest) {
       status: "New",
     };
     await saveReturn(item);
-    return NextResponse.json({ id: item.id }, { status: 201 });
+    return NextResponse.json({ id: item.id }, { status: 201, headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     if (evidencePath) await deleteReturnEvidence(evidencePath).catch(() => undefined);
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Could not submit your return request." }, { status: 500 });
+    console.error("Could not submit a return request:", error);
+    return NextResponse.json({ error: "Could not submit your return request." }, { status: 503 });
   }
 }

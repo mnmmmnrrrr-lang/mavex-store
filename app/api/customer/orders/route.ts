@@ -21,6 +21,7 @@ export async function GET(request: NextRequest) {
       }));
     return NextResponse.json({ orders }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Could not load your orders." }, { status: 503 });
+    console.error("Could not load customer orders:", error);
+    return NextResponse.json({ error: "Could not load your orders." }, { status: 503, headers: { "Cache-Control": "no-store" } });
   }
 }

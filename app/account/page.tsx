@@ -26,10 +26,10 @@ export default function AccountPage() {
 
   useEffect(() => {
     let cancelled = false;
-    if (new URLSearchParams(window.location.search).get("authError") === "google") {
-      setMessage("Google sign-in could not be completed. Please try again.");
-    }
     void getSupabaseBrowserSession().then(async (session) => {
+      if (new URLSearchParams(window.location.search).get("authError") === "google") {
+        if (!cancelled) setMessage("Google sign-in could not be completed. Please try again.");
+      }
       if (!session) return;
       try {
         await loadOrders(session.access_token);
@@ -39,7 +39,12 @@ export default function AccountPage() {
           setDisplayName(String(metadata.full_name || metadata.name || ""));
           setSignedIn(true);
         }
-      } catch { await supabaseBrowser.auth.signOut(); }
+      } catch {
+        await supabaseBrowser.auth.signOut().catch(() => undefined);
+        if (!cancelled) setMessage("Could not load your orders. Please refresh and sign in again.");
+      }
+    }).catch(() => {
+      if (!cancelled) setMessage("Could not restore your sign-in. Please try Google sign-in again.");
     });
     return () => { cancelled = true; };
   }, [loadOrders]);
@@ -60,7 +65,13 @@ export default function AccountPage() {
   }
 
   async function signOut() {
-    await supabaseBrowser.auth.signOut(); setSignedIn(false); setDisplayName(""); setEmail(""); setOrders([]); setMessage("");
+    try {
+      const { error } = await supabaseBrowser.auth.signOut();
+      if (error) throw error;
+      setSignedIn(false); setDisplayName(""); setEmail(""); setOrders([]); setMessage("");
+    } catch {
+      setMessage("Could not sign out. Please try again.");
+    }
   }
 
   async function cancelOrder(order: CustomerOrder) {

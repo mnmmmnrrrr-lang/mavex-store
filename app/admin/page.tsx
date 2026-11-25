@@ -152,6 +152,10 @@ async function uploadProductMedia(file: File, kind: ProductMediaKind): Promise<U
   // Keep the original pixels and file format. Next Image creates responsive
   // delivery variants when the photo is displayed on the storefront.
   const uploadFile = file;
+  const maxBytes = (kind === "image" ? 5 : 30) * 1024 * 1024;
+  if (!uploadFile.size || uploadFile.size > maxBytes) {
+    throw new Error(kind === "image" ? "Each product photo must be 5 MB or smaller." : "The product video must be 30 MB or smaller.");
+  }
   const signingResponse = await fetch("/api/admin/product-media-upload", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -210,8 +214,18 @@ export default function AdminPage() {
   }
 
   async function loadOperations() {
-    const response = await fetch("/api/admin/operations", { cache: "no-store" });
-    if (response.ok) setOperations(await response.json() as OperationsData);
+    try {
+      const response = await fetch("/api/admin/operations", { cache: "no-store" });
+      if (!response.ok) {
+        if (response.status !== 401) setMessage("Could not refresh store operations.");
+        return false;
+      }
+      setOperations(await response.json() as OperationsData);
+      return true;
+    } catch {
+      setMessage("Connection interrupted. Could not refresh store operations.");
+      return false;
+    }
   }
 
   useEffect(() => {
@@ -374,7 +388,7 @@ export default function AdminPage() {
       return;
     }
     if (images.some((image) => image.size > 20 * 1024 * 1024)) {
-      setMessage("Each product photo must be 20 MB or smaller.");
+      setMessage("Each product photo must be 5 MB or smaller.");
       return;
     }
     if (images.some((image) => !["image/jpeg", "image/png", "image/webp"].includes(image.type))) {
@@ -479,27 +493,41 @@ export default function AdminPage() {
 
 
   async function logout() {
-    await fetch("/api/admin/logout", { method: "POST" });
-    setLoggedIn(false);
-    setProducts([]);
+    try {
+      const response = await fetch("/api/admin/logout", { method: "POST" });
+      if (!response.ok) { setMessage("Could not log out. Please try again."); return; }
+      setLoggedIn(false);
+      setProducts([]);
+      setOperations({ orders: [], returns: [], comments: [] });
+    } catch {
+      setMessage("Connection interrupted. Could not log out.");
+    }
   }
 
   async function updateOperation(type: "order" | "return" | "comment", id: string, fields: Record<string, string>) {
-    const response = await fetch("/api/admin/operations", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type, id, ...fields }) });
-    if (!response.ok) { setMessage("Could not save the change."); return; }
-    await loadOperations();
+    try {
+      const response = await fetch("/api/admin/operations", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type, id, ...fields }) });
+      if (!response.ok) { setMessage("Could not save the change."); return; }
+      await loadOperations();
+    } catch {
+      setMessage("Connection interrupted. Could not save the change.");
+    }
   }
 
   async function sendReturnReply(id: string) {
     const text = (returnReplies[id] || "").trim();
     if (!text) return;
-    const response = await fetch(`/api/admin/returns/${encodeURIComponent(id)}/messages`, {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }),
-    });
-    const result = await response.json();
-    if (!response.ok) { setMessage(result.error || "Could not send the reply."); return; }
-    setReturnReplies((current) => ({ ...current, [id]: "" }));
-    await loadOperations();
+    try {
+      const response = await fetch(`/api/admin/returns/${encodeURIComponent(id)}/messages`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }),
+      });
+      const result = await response.json();
+      if (!response.ok) { setMessage(result.error || "Could not send the reply."); return; }
+      setReturnReplies((current) => ({ ...current, [id]: "" }));
+      await loadOperations();
+    } catch {
+      setMessage("Connection interrupted. Could not send the reply.");
+    }
   }
 
   async function deleteOrder(order: OperationsData["orders"][number]) {
@@ -583,7 +611,7 @@ export default function AdminPage() {
               <input id="product-name" required maxLength={120} value={name} onChange={(event) => setName(event.target.value)} style={inputStyle} />
 
               <label htmlFor="product-description" style={{ ...labelStyle, marginTop: 14 }}>Description</label>
-              <textarea id="product-description" value={description} onChange={(event) => setDescription(event.target.value)} rows={3} style={{ ...inputStyle, resize: "vertical" }} />
+              <textarea id="product-description" maxLength={5000} value={description} onChange={(event) => setDescription(event.target.value)} rows={3} style={{ ...inputStyle, resize: "vertical" }} />
 
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 14 }}>
                 <div><label htmlFor="product-price" style={labelStyle}>Price (EGP)</label><input id="product-price" type="number" min="1" step="1" required value={price} onChange={(event) => setPrice(event.target.value)} style={inputStyle} /></div>
@@ -646,15 +674,15 @@ export default function AdminPage() {
                       <label style={{ fontSize: 10, color: "#666" }}>Variant<strong style={{ display: "block", marginTop: 10, fontSize: 13, color: "#111" }}>{size}</strong></label>
                       <label style={{ fontSize: 11, color: "#666" }}>Chart size label<input aria-label={size + " chart label"} maxLength={30} required value={sizeMeasurements[size]?.label || size} onChange={(event) => setSizeMeasurements((current) => ({ ...current, [size]: { ...current[size], label: event.target.value } }))} placeholder={size} style={{ ...inputStyle, marginTop: 4 }} /></label>
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
-                        <label style={{ fontSize: 10, color: "#666" }}>{sizeGuideLengthLabel || "Length"}<input aria-label={size + " length"} type="number" min="1" step="0.1" required value={sizeMeasurements[size]?.length || ""} onChange={(event) => setSizeMeasurements((current) => ({ ...current, [size]: { ...current[size], length: event.target.value } }))} style={{ ...inputStyle, marginTop: 4 }} /></label>
-                        <label style={{ fontSize: 10, color: "#666" }}>{sizeGuideWidthLabel || "Width"}<input aria-label={size + " width"} type="number" min="1" step="0.1" required value={sizeMeasurements[size]?.width || ""} onChange={(event) => setSizeMeasurements((current) => ({ ...current, [size]: { ...current[size], width: event.target.value } }))} style={{ ...inputStyle, marginTop: 4 }} /></label>
+                        <label style={{ fontSize: 10, color: "#666" }}>{sizeGuideLengthLabel || "Length"}<input aria-label={size + " length"} type="number" min="1" max="500" step="0.1" required value={sizeMeasurements[size]?.length || ""} onChange={(event) => setSizeMeasurements((current) => ({ ...current, [size]: { ...current[size], length: event.target.value } }))} style={{ ...inputStyle, marginTop: 4 }} /></label>
+                        <label style={{ fontSize: 10, color: "#666" }}>{sizeGuideWidthLabel || "Width"}<input aria-label={size + " width"} type="number" min="1" max="500" step="0.1" required value={sizeMeasurements[size]?.width || ""} onChange={(event) => setSizeMeasurements((current) => ({ ...current, [size]: { ...current[size], width: event.target.value } }))} style={{ ...inputStyle, marginTop: 4 }} /></label>
                       </div>
                     </div>
                   ))}
                 </div>
               </div>
 
-              <label htmlFor="product-images" style={{ ...labelStyle, marginTop: 18 }}>Product photos (up to 8 images, 20 MB each)</label>
+              <label htmlFor="product-images" style={{ ...labelStyle, marginTop: 18 }}>Product photos (up to 8 images, 5 MB each)</label>
               {editingProduct?.product_images?.length ? <div style={{ display: "flex", gap: 7, overflowX: "auto", margin: "8px 0" }}>{editingProduct.product_images.map((photo, index) => <Image key={photo.image_url} src={photo.image_url} alt={`${editingProduct.name} ${index + 1}`} width={58} height={66} sizes="58px" quality={80} style={{ width: 58, height: 66, objectFit: "cover", borderRadius: 5 }} />)}</div> : null}
               {editingId && <label style={{ display: "flex", alignItems: "center", gap: 8, margin: "8px 0", fontSize: 12, color: "#444" }}><input type="checkbox" checked={replaceProductImages} onChange={(event) => setReplaceProductImages(event.target.checked)} />Replace current photos with the original quality photos selected below</label>}
               <input id="product-images" type="file" multiple accept="image/png,image/jpeg,image/webp" required={!editingId || replaceProductImages} onChange={(event) => setImages(Array.from(event.target.files || []))} style={{ ...inputStyle, padding: 9 }} />

@@ -73,7 +73,7 @@ export async function saveProductImage(productId: string, image: File) {
   const extensions: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" };
   const extension = extensions[image.type];
   if (!extension) throw new Error("Choose a JPG, PNG, or WebP image.");
-  if (image.size === 0 || image.size > 20 * 1024 * 1024) throw new Error("Each image must be 20 MB or smaller.");
+  if (image.size === 0 || image.size > 5 * 1024 * 1024) throw new Error("Each image must be 5 MB or smaller.");
   const client = getSupabaseAdmin();
   const path = `${productId}/${crypto.randomUUID()}.${extension}`;
   const { error } = await client.storage.from("mavex-product-images").upload(path, Buffer.from(await image.arrayBuffer()), { contentType: image.type, upsert: false, cacheControl: "31536000" });
@@ -149,6 +149,7 @@ export async function deleteProductVideo(pathOrUrl: string) {
 export async function savePaymentProof(dataUrl: string, orderId: string) {
   const match = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl);
   if (!match) throw new Error("The payment proof must be a JPG, PNG, or WebP image.");
+  if (match[2].length > 4 * 1024 * 1024) throw new Error("The payment proof must be 3 MB or smaller.");
   const contentType = match[1]; const contents = Buffer.from(match[2], "base64");
   if (!contents.length || contents.length > 3 * 1024 * 1024) throw new Error("The payment proof must be 3 MB or smaller.");
   const ext = contentType === "image/jpeg" ? "jpg" : contentType.split("/")[1];
@@ -157,6 +158,12 @@ export async function savePaymentProof(dataUrl: string, orderId: string) {
   const { error } = await client.storage.from("mavex-payment-proofs").upload(path, contents, { contentType, upsert: false });
   if (error) throw new Error(`Could not upload the payment proof: ${error.message}`);
   return path;
+}
+
+export async function deletePaymentProof(path: string) {
+  if (!/^MVX-[A-Z0-9-]+\/[0-9a-f-]{36}\.(jpg|png|webp)$/i.test(path)) return;
+  const { error } = await getSupabaseAdmin().storage.from("mavex-payment-proofs").remove([path]);
+  if (error) throw new Error(`Could not remove the payment proof: ${error.message}`);
 }
 
 export async function saveReturnEvidence(file: File, returnId: string) {

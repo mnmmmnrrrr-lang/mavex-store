@@ -4,33 +4,34 @@
 import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-
-type CartItem = {
-  name: string;
-  price: number;
-  size: string;
-  color?: string;
-  quantity: number;
-  image: string;
-};
+import { normalizeCartItems, type CartItem } from "@/lib/cart";
 
 export default function CartPage() {
   const [cart, setCart] = useState<CartItem[]>([]);
+  const [cartWarning, setCartWarning] = useState("");
 
   useEffect(() => {
-    try {
-      const savedCart = localStorage.getItem("mavex-cart");
-      if (savedCart) {
-        setCart(JSON.parse(savedCart));
+    const timer = window.setTimeout(() => {
+      try {
+        const savedCart = localStorage.getItem("mavex-cart");
+        if (savedCart) {
+          setCart(normalizeCartItems(JSON.parse(savedCart)));
+        }
+      } catch {
+        setCart([]);
       }
-    } catch {
-      setCart([]);
-    }
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, []);
 
   function updateCart(newCart: CartItem[]) {
     setCart(newCart);
-    localStorage.setItem("mavex-cart", JSON.stringify(newCart));
+    try {
+      localStorage.setItem("mavex-cart", JSON.stringify(newCart));
+      setCartWarning("");
+    } catch {
+      setCartWarning("Your browser could not save this bag. Keep this page open until checkout.");
+    }
   }
 
   const total = cart.reduce(
@@ -85,6 +86,7 @@ export default function CartPage() {
           </div>
         ) : (
           <>
+            {cartWarning && <p role="status" style={{ color: "#a22", marginBottom: 16 }}>{cartWarning}</p>}
             {cart.map((item, index) => (
               <div className="cart-item" key={index}>
                 {item.image ? (
@@ -129,18 +131,20 @@ export default function CartPage() {
 
                     <button
                       aria-label="Increase quantity"
+                      disabled={item.stock_quantity <= 0 || item.quantity >= Math.min(item.stock_quantity, 10)}
                       onClick={() =>
                         updateCart(
                           cart.map((product, i) =>
                             i === index
                               ? {
                                   ...product,
-                                  quantity: product.quantity + 1
+                                  quantity: Math.min(product.quantity + 1, product.stock_quantity, 10)
                                 }
                               : product
                           )
                         )
                       }
+                      style={{ opacity: item.stock_quantity <= 0 || item.quantity >= Math.min(item.stock_quantity, 10) ? 0.45 : 1, cursor: item.stock_quantity <= 0 || item.quantity >= Math.min(item.stock_quantity, 10) ? "not-allowed" : "pointer" }}
                     >
                       +
                     </button>

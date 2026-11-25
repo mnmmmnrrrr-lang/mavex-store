@@ -13,6 +13,11 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const contentLength = Number(request.headers.get("content-length") || 0);
+  if (contentLength > 4 * 1024) {
+    return NextResponse.json({ error: "Invalid request." }, { status: 413 });
+  }
+
   let body: { password?: unknown };
   try {
     body = await request.json();

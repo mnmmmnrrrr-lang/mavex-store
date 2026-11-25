@@ -4,8 +4,11 @@ import { getCatalogOverlay } from "../../../../lib/store-db";
 export async function GET() {
   try {
     const state = await getCatalogOverlay();
-    return NextResponse.json({ deletedIds: state.deletedIds, overrides: state.overrides }, { headers: { "Cache-Control": "no-store" } });
+    // This endpoint is public, so return only tombstones. Full product
+    // overrides contain private inventory counts and admin-managed records.
+    return NextResponse.json({ deletedIds: state.deletedIds }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Could not load catalog state." }, { status: 503 });
+    console.error("Could not load public catalog state:", error);
+    return NextResponse.json({ error: "Could not load catalog state." }, { status: 503 });
   }
 }

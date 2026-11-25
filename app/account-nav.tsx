@@ -39,9 +39,14 @@ export default function AccountNav() {
 
   async function signOut() {
     setSigningOut(true);
-    await supabaseBrowser.auth.signOut();
-    setUser(null);
-    setSigningOut(false);
+    try {
+      const { error } = await supabaseBrowser.auth.signOut();
+      if (!error) setUser(null);
+    } catch {
+      // Keep the current navigation state if sign-out could not complete.
+    } finally {
+      setSigningOut(false);
+    }
   }
 
   if (!user) return <Link href="/account">MY ORDERS</Link>;

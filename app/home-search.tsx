@@ -33,6 +33,7 @@ export default function HomeSearch({ products }: { products: StorefrontProduct[]
         onChange={(event) => setSearchTerm(event.target.value)}
         placeholder="Search products"
         aria-label="Search products"
+        role="combobox"
         aria-expanded={Boolean(searchQuery)}
         aria-controls="navbar-search-results"
       />

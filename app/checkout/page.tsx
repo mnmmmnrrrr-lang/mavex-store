@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { getSupabaseBrowserSession } from "@/lib/supabase-browser";
+import { normalizeCartItems, type CartItem } from "@/lib/cart";
 
 const governorates = [
   "Cairo", "Giza", "Alexandria", "Qalyubia", "Gharbia",
@@ -20,18 +21,8 @@ const PAYMENT = {
   instaPayAddress: "demo@instapay",
 };
 
-type Item = {
-  productId?: string;
-  name: string;
-  price: number;
-  size: string;
-  color?: string;
-  quantity: number;
-  image: string;
-};
-
 export default function CheckoutPage() {
-  const [cart, setCart] = useState<Item[]>([]);
+  const [cart, setCart] = useState<CartItem[]>([]);
   const [payment, setPayment] = useState("cod");
   const [governorate, setGovernorate] = useState("");
   const [proof, setProof] = useState("");
@@ -54,35 +45,36 @@ export default function CheckoutPage() {
   });
 
   useEffect(() => {
-    const isBuyNow = new URLSearchParams(window.location.search).get("buyNow") === "1";
-    const saved = localStorage.getItem(isBuyNow ? "mavex-buy-now" : "mavex-cart");
-    if (saved) {
+    let active = true;
+    const timer = window.setTimeout(() => {
+      let savedEmail = "";
       try {
-        setCart(JSON.parse(saved));
+        const isBuyNow = new URLSearchParams(window.location.search).get("buyNow") === "1";
+        const saved = localStorage.getItem(isBuyNow ? "mavex-buy-now" : "mavex-cart");
+        if (saved) setCart(normalizeCartItems(JSON.parse(saved)));
+        savedEmail = localStorage.getItem("mavex-last-order-email") || "";
+        if (savedEmail) setForm((current) => ({ ...current, email: current.email || savedEmail }));
       } catch {
         setCart([]);
+        setMessage("Your browser could not read the saved bag. Please return to the product and try again.");
       }
-    }
 
-    const savedEmail = localStorage.getItem("mavex-last-order-email") || "";
-    if (savedEmail) setForm((current) => ({ ...current, email: current.email || savedEmail }));
-
-    let active = true;
-    void getSupabaseBrowserSession().then((session) => {
-      if (!active || !session?.user) return;
-      const metadata = session.user.user_metadata || {};
-      const fullName = String(metadata.full_name || metadata.name || [metadata.given_name, metadata.family_name].filter(Boolean).join(" ") || "");
-      setForm((current) => ({
-        ...current,
-        name: current.name || fullName,
-        email: session.user.email && current.email === savedEmail
-          ? session.user.email
-          : current.email || session.user.email || "",
-      }));
-    }).catch(() => {
-      // Checkout remains usable when auth state cannot be restored.
-    });
-    return () => { active = false; };
+      void getSupabaseBrowserSession().then((session) => {
+        if (!active || !session?.user) return;
+        const metadata = session.user.user_metadata || {};
+        const fullName = String(metadata.full_name || metadata.name || [metadata.given_name, metadata.family_name].filter(Boolean).join(" ") || "");
+        setForm((current) => ({
+          ...current,
+          name: current.name || fullName,
+          email: session.user.email && current.email === savedEmail
+            ? session.user.email
+            : current.email || session.user.email || "",
+        }));
+      }).catch(() => {
+        // Checkout remains usable when auth state cannot be restored.
+      });
+    }, 0);
+    return () => { active = false; window.clearTimeout(timer); };
   }, []);
 
   const subtotal = cart.reduce(
@@ -101,8 +93,8 @@ export default function CheckoutPage() {
   function handleProof(file?: File) {
     if (!file) return;
 
-    if (!file.type.startsWith("image/")) {
-      setFieldErrors((old) => ({ ...old, proof: "Choose an image file for your payment screenshot." }));
+    if (!/^image\/(jpeg|png|webp)$/.test(file.type)) {
+      setFieldErrors((old) => ({ ...old, proof: "Choose a JPG, PNG, or WebP image for your payment screenshot." }));
       return;
     }
 
@@ -155,9 +147,14 @@ export default function CheckoutPage() {
       const response = await fetch("/api/orders", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(order) });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Could not save your order.");
-      const isBuyNow = new URLSearchParams(window.location.search).get("buyNow") === "1";
-      localStorage.removeItem(isBuyNow ? "mavex-buy-now" : "mavex-cart");
-      localStorage.setItem("mavex-last-order-email", form.email.trim().toLowerCase());
+      try {
+        const isBuyNow = new URLSearchParams(window.location.search).get("buyNow") === "1";
+        localStorage.removeItem(isBuyNow ? "mavex-buy-now" : "mavex-cart");
+        localStorage.setItem("mavex-last-order-email", form.email.trim().toLowerCase());
+      } catch {
+        // The order is already saved on the server; storage cleanup must not
+        // make checkout look failed or invite the customer to submit twice.
+      }
 
       setCart([]);
       setRecentOrderId(result.id);
@@ -393,12 +390,8 @@ export default function CheckoutPage() {
                 onChange={(e) => handleProof(e.target.files?.[0])} />
 
               {proof && (
-                <img src={proof} alt="Payment proof"
-                  style={{
-                    width: 130,
-                    marginTop: 12,
-                    borderRadius: 6
-                  }} />
+                <Image src={proof} alt="Payment proof" width={130} height={130} unoptimized
+                  style={{ width: 130, height: "auto", marginTop: 12, borderRadius: 6 }} />
               )}
               {fieldErrors.proof && <small style={errorStyle}>{fieldErrors.proof}</small>}
 

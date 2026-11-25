@@ -5,14 +5,17 @@ export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { id } = await params;
-  const product = await getCatalogProduct(id);
+  try {
+    const { id } = await params;
+    const product = await getCatalogProduct(id);
 
-  if (!product) {
-    return NextResponse.json({ error: "Product not found." }, { status: 404 });
+    if (!product) return NextResponse.json({ error: "Product not found." }, { status: 404 });
+
+    return NextResponse.json(product, {
+      headers: { "Cache-Control": "public, s-maxage=15, stale-while-revalidate=120" },
+    });
+  } catch (error) {
+    console.error("Could not load a public catalog product:", error);
+    return NextResponse.json({ error: "Could not load this product." }, { status: 503 });
   }
-
-  return NextResponse.json(product, {
-    headers: { "Cache-Control": "public, s-maxage=15, stale-while-revalidate=120" },
-  });
 }

@@ -33,6 +33,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 
+  const contentLength = Number(request.headers.get("content-length") || 0);
+  if (contentLength > 256 * 1024) {
+    return NextResponse.json({ error: "Order details are too large." }, { status: 413 });
+  }
+
   let order: unknown;
   try {
     order = await request.json();
@@ -89,7 +94,7 @@ export async function POST(request: NextRequest) {
       }
     }
     return NextResponse.json({ ok: true });
-  } catch (error) {
+  } catch {
     console.error("Telegram order notification failed due to a network or API error.");
     return NextResponse.json({ error: "Telegram notification could not be sent." }, { status: 502 });
   }

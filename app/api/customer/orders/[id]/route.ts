@@ -24,6 +24,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     await saveOrder(order);
     return NextResponse.json({ ok: true, status: order.status });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Could not cancel this order." }, { status: 503 });
+    console.error("Could not cancel a customer order:", error);
+    return NextResponse.json({ error: "Could not cancel this order." }, { status: 503, headers: { "Cache-Control": "no-store" } });
   }
 }

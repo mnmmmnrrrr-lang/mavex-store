@@ -1,7 +1,14 @@
 import { after, NextRequest, NextResponse } from "next/server";
 import { getCatalogProduct } from "../../../lib/catalog-server";
 import { newOperationId, StoreOrder } from "../../../lib/operations-store";
-import { saveOrder, savePaymentProof } from "../../../lib/store-db";
+import { deletePaymentProof, saveOrder, savePaymentProof } from "../../../lib/store-db";
+
+const MAX_ORDER_BODY_BYTES = 5 * 1024 * 1024;
+type RecordValue = Record<string, unknown>;
+
+function isRecord(value: unknown): value is RecordValue {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
 
 function escapeHtml(value: string) {
   return value.replace(/[&<>"']/g, character => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character] || character);
@@ -58,95 +65,152 @@ async function notifyAdmin(order: StoreOrder) {
   return true;
 }
 
+async function notifyTelegram(order: StoreOrder) {
+  const token = process.env.TELEGRAM_BOT_TOKEN?.trim();
+  const chatId = process.env.TELEGRAM_CHAT_ID?.trim();
+  console.log("Telegram token exists:", !!token);
+  console.log("Telegram chat ID exists:", !!chatId);
+
+  if (!token || !chatId) {
+    console.error("Telegram notification skipped: TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID is missing.");
+    return;
+  }
+
+  for (const text of formatTelegramOrder(order)) {
+    const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chat_id: chatId, text, parse_mode: "HTML" }),
+      signal: AbortSignal.timeout(8000),
+    });
+    const payload = await response.json().catch(() => null);
+    const result = {
+      ok: payload?.ok === true,
+      status: response.status,
+      error_code: payload?.error_code,
+      description: typeof payload?.description === "string" ? payload.description : undefined,
+      message_id: typeof payload?.result?.message_id === "number" ? payload.result.message_id : undefined,
+    };
+    console.log("Telegram API response:", result);
+    if (!response.ok || !result.ok) throw new Error("Telegram did not accept the order notification.");
+  }
+}
+
 export async function POST(request: NextRequest) {
+  let uploadedProof = "";
+  let savedOrderId = "";
   try {
-    const body = await request.json();
-    const customer = body?.customer;
-    const incomingItems = body?.items;
-    if (!customer?.name || !/^01[0125][0-9]{8}$/.test(String(customer.phone || "")) || !body?.governorate || !customer.city || !customer.village || !customer.street || !Array.isArray(incomingItems) || !incomingItems.length || incomingItems.length > 30) {
+    const contentLength = Number(request.headers.get("content-length") || 0);
+    if (contentLength > MAX_ORDER_BODY_BYTES) {
+      return NextResponse.json({ error: "The order request is too large." }, { status: 413 });
+    }
+
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid order request." }, { status: 400 });
+    }
+    if (!isRecord(body) || !isRecord(body.customer)) {
       return NextResponse.json({ error: "Complete your delivery details and check your phone number." }, { status: 400 });
     }
-    if (typeof customer.email !== "string" || customer.email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customer.email.trim())) return NextResponse.json({ error: "Enter a valid email address." }, { status: 400 });
-    const payment = String(body.payment || "cod");
+
+    const customer = body.customer;
+    const name = typeof customer.name === "string" ? customer.name.trim() : "";
+    const phone = typeof customer.phone === "string" ? customer.phone.trim() : "";
+    const email = typeof customer.email === "string" ? customer.email.trim() : "";
+    const city = typeof customer.city === "string" ? customer.city.trim() : "";
+    const village = typeof customer.village === "string" ? customer.village.trim() : "";
+    const street = typeof customer.street === "string" ? customer.street.trim() : "";
+    const governorate = typeof body.governorate === "string" ? body.governorate.trim() : "";
+    const incomingItems = body.items;
+    if (!name || name.length > 120 || !/^01[0125][0-9]{8}$/.test(phone) || !governorate || governorate.length > 80 ||
+      !city || city.length > 120 || !village || village.length > 120 || !street || street.length > 240 ||
+      !Array.isArray(incomingItems) || !incomingItems.length || incomingItems.length > 30) {
+      return NextResponse.json({ error: "Complete your delivery details and check your phone number." }, { status: 400 });
+    }
+    if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return NextResponse.json({ error: "Enter a valid email address." }, { status: 400 });
+    const payment = typeof body.payment === "string" ? body.payment : "cod";
     if (!["cod", "vodafone", "instapay"].includes(payment)) return NextResponse.json({ error: "Choose a valid payment method." }, { status: 400 });
 
+    const requestedVariants = new Map<string, { productId: string; size: string; color: string; quantity: number }>();
+    for (const candidate of incomingItems) {
+      if (!isRecord(candidate)) return NextResponse.json({ error: "Check the selected products, sizes, and quantities." }, { status: 400 });
+      const productId = typeof candidate.productId === "string" ? candidate.productId.trim() : "";
+      const size = typeof candidate.size === "string" ? candidate.size.trim().toUpperCase() : "";
+      const color = typeof candidate.color === "string" ? candidate.color.trim() : "";
+      const quantity = candidate.quantity;
+      if (!productId || productId.length > 160 || !size || size.length > 20 || !color || color.length > 40 || !Number.isInteger(quantity) || Number(quantity) < 1 || Number(quantity) > 10) {
+        return NextResponse.json({ error: "Check the selected products, sizes, and quantities." }, { status: 400 });
+      }
+      const key = JSON.stringify([productId, color, size]);
+      const existing = requestedVariants.get(key);
+      const combinedQuantity = Number(quantity) + (existing?.quantity || 0);
+      if (combinedQuantity > 10) return NextResponse.json({ error: "A product size can have at most 10 items per order." }, { status: 400 });
+      requestedVariants.set(key, { productId, size, color, quantity: combinedQuantity });
+    }
+
     const items: StoreOrder["items"] = [];
-    for (const item of incomingItems as { productId?: string; size?: string; color?: string; quantity?: number }[]) {
-      const quantity = Number(item.quantity);
-      if (!item.productId || !item.size || !item.color || !Number.isInteger(quantity) || quantity < 1 || quantity > 10) return NextResponse.json({ error: "Check the selected products, sizes, and quantities." }, { status: 400 });
+    for (const item of requestedVariants.values()) {
+      const { quantity } = item;
       const product = await getCatalogProduct(item.productId);
-      const variant = product?.product_variants.find(row => row.color === item.color && row.size === item.size && row.is_active !== false);
+      const variant = product?.product_variants?.find(row => row.color === item.color && row.size === item.size && row.is_active !== false);
       if (!product || !variant) return NextResponse.json({ error: "A selected product or size is no longer available. Please refresh your bag." }, { status: 409 });
-      if (variant.stock_quantity < quantity) return NextResponse.json({ error: `${product.name} (${item.size}) does not have enough stock.` }, { status: 409 });
-      items.push({ productId: product.id, name: product.name, price: Number(variant.price_override ?? product.price), size: variant.size, color: variant.color, quantity, image: product.product_images[0]?.image_url || "" });
+      const availableStock = Number(variant.stock_quantity);
+      const unitPrice = Number(variant.price_override ?? product.price);
+      if (!Number.isSafeInteger(availableStock) || availableStock < 0 || !Number.isFinite(unitPrice) || unitPrice <= 0) {
+        console.error("Order rejected because catalog inventory or price is invalid.", { productId: product.id, size: item.size });
+        return NextResponse.json({ error: "This product is temporarily unavailable. Please contact MAVEX." }, { status: 503 });
+      }
+      if (availableStock < quantity) return NextResponse.json({ error: `${product.name} (${item.size}) does not have enough stock.` }, { status: 409 });
+      items.push({ productId: product.id, name: product.name, price: unitPrice, size: variant.size, color: variant.color, quantity, image: product.product_images?.[0]?.image_url || "" });
     }
 
     const subtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+    if (!Number.isFinite(subtotal)) return NextResponse.json({ error: "The order total is invalid. Please refresh your bag." }, { status: 400 });
     const id = newOperationId("MVX");
     let proof = "";
     if (payment !== "cod") {
-      if (typeof body.proof !== "string" || !body.proof) return NextResponse.json({ error: "Upload your payment transfer screenshot." }, { status: 400 });
+      if (typeof body.proof !== "string" || !body.proof || body.proof.length > 4 * 1024 * 1024 + 100) return NextResponse.json({ error: "Upload a JPG, PNG, or WebP payment screenshot up to 3 MB." }, { status: 400 });
       proof = await savePaymentProof(body.proof, id);
+      uploadedProof = proof;
     }
     const order: StoreOrder = {
       id,
       customer: {
-        name: String(customer.name).trim().slice(0, 120), phone: String(customer.phone), email: String(customer.email).trim().toLowerCase(), phone2: String(customer.phone2 || "").slice(0, 30),
-        city: String(customer.city).trim().slice(0, 120), village: String(customer.village).trim().slice(0, 120), street: String(customer.street).trim().slice(0, 240),
-        building: String(customer.building || "").slice(0, 120), notes: String(customer.notes || "").slice(0, 500),
+        name, phone, email: email.toLowerCase(), phone2: typeof customer.phone2 === "string" ? customer.phone2.trim().slice(0, 30) : "",
+        city, village, street,
+        building: typeof customer.building === "string" ? customer.building.trim().slice(0, 120) : "", notes: typeof customer.notes === "string" ? customer.notes.trim().slice(0, 500) : "",
       },
-      governorate: String(body.governorate).slice(0, 80), items, subtotal, shipping: 120, total: subtotal + 120, payment,
-      transaction: String(body.transaction || "").trim().slice(0, 100), proof,
+      governorate, items, subtotal, shipping: 120, total: subtotal + 120, payment,
+      transaction: typeof body.transaction === "string" ? body.transaction.trim().slice(0, 100) : "", proof,
       status: payment === "cod" ? "Pending confirmation" : "Awaiting payment review", date: new Date().toISOString(),
     };
     await saveOrder(order);
+    uploadedProof = "";
+    savedOrderId = order.id;
 
-    const token = process.env.TELEGRAM_BOT_TOKEN?.trim();
-    const chatId = process.env.TELEGRAM_CHAT_ID?.trim();
-    console.log("Telegram token exists:", !!token);
-    console.log("Telegram chat ID exists:", !!chatId);
-
-    if (!token || !chatId) {
-      console.error("Telegram notification skipped: TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID is missing.");
-    } else {
+    try { after(async () => {
       try {
-        for (const text of formatTelegramOrder(order)) {
-          const telegramResponse = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ chat_id: chatId, text, parse_mode: "HTML" }),
-            signal: AbortSignal.timeout(8000),
-          });
-          const telegramPayload = await telegramResponse.json().catch(() => null);
-          const result = {
-            ok: telegramPayload?.ok === true,
-            status: telegramResponse.status,
-            error_code: telegramPayload?.error_code,
-            description: typeof telegramPayload?.description === "string" ? telegramPayload.description : undefined,
-            message_id: typeof telegramPayload?.result?.message_id === "number" ? telegramPayload.result.message_id : undefined,
-          };
-          console.log("Telegram API response:", result);
-          if (!telegramResponse.ok || !result.ok) {
-            console.error("Telegram did not accept the order notification.");
-            break;
-          }
-        }
+        await notifyTelegram(order);
       } catch (error) {
-        console.error("Telegram request failed:", error instanceof Error ? error.message : "Unknown Telegram error");
+        console.error("Order saved, but Telegram notification failed:", error instanceof Error ? error.message : "Unknown Telegram error");
       }
-    }
-
-    after(async () => {
       try {
         const sent = await notifyAdmin(order);
         if (!sent) console.warn("Order saved; admin email notification is not configured.");
       } catch (error) {
         console.error("Order saved, but admin email notification failed:", error instanceof Error ? error.message : "Unknown email error");
       }
-    });
+    }); } catch (error) {
+      console.error("Order saved, but background notifications could not be scheduled:", error);
+    }
 
-    return NextResponse.json({ id: order.id }, { status: 201 });
+    return NextResponse.json({ id: order.id }, { status: 201, headers: { "Cache-Control": "no-store" } });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Could not save your order. Please try again." }, { status: 503 });
+    if (uploadedProof) await deletePaymentProof(uploadedProof).catch((cleanupError) => console.error("Could not remove an unsaved payment proof:", cleanupError));
+    console.error("Could not create a MAVEX order:", error);
+    if (savedOrderId) return NextResponse.json({ id: savedOrderId }, { status: 201, headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json({ error: "Could not save your order. Please try again." }, { status: 503 });
   }
 }

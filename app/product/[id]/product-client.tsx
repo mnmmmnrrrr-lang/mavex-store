@@ -6,6 +6,7 @@ import Link from "next/link";
 import Image from "next/image";
 import SizeFinder, { type SizeFinderOption } from "./size-finder";
 import { canLinkColorProduct } from "@/lib/product-type";
+import { normalizeCartItems, type CartItem } from "@/lib/cart";
 
 type Variant = {
   id: string;
@@ -37,15 +38,6 @@ export type Product = {
   product_variants: Variant[];
 };
 
-type CartItem = {
-  productId: string;
-  name: string;
-  price: number;
-  size: string;
-  color: string;
-  quantity: number;
-  image: string;
-};
 type ProductComment = { id: string; name: string; rating: number; message: string; date: string; reply?: string };
 type RelatedProduct = {
   id: string;
@@ -299,6 +291,7 @@ function ProductContent({ initialProduct, initialRelatedProducts }: ProductClien
       color,
       quantity,
       image: images[0] || "",
+      stock_quantity: stock,
     };
   }
 
@@ -310,7 +303,7 @@ function ProductContent({ initialProduct, initialRelatedProducts }: ProductClien
 
     try {
       const saved = JSON.parse(localStorage.getItem("mavex-cart") || "[]");
-      cart = Array.isArray(saved) ? saved : [];
+      cart = normalizeCartItems(saved);
     } catch {
       cart = [];
     }
@@ -323,21 +316,30 @@ function ProductContent({ initialProduct, initialRelatedProducts }: ProductClien
     );
 
     if (existing) {
-      existing.quantity = Math.min(existing.quantity + selectedItem.quantity, stock);
+      existing.quantity = Math.min(existing.quantity + selectedItem.quantity, stock, 10);
     } else {
       cart.push(selectedItem);
     }
 
-    localStorage.setItem("mavex-cart", JSON.stringify(cart));
-    setMessage("ADDED TO YOUR BAG ✓");
+    try {
+      localStorage.setItem("mavex-cart", JSON.stringify(cart));
+      setMessage("ADDED TO YOUR BAG ✓");
+    } catch {
+      setMessage("YOUR BROWSER COULD NOT SAVE THE BAG. TRY CHECKOUT AGAIN.");
+      return false;
+    }
     return true;
   }
 
   function buyNow() {
     const selectedItem = getSelectedCartItem();
     if (!selectedItem) return;
-    localStorage.setItem("mavex-buy-now", JSON.stringify([selectedItem]));
-    router.push("/checkout?buyNow=1");
+    try {
+      localStorage.setItem("mavex-buy-now", JSON.stringify([selectedItem]));
+      router.push("/checkout?buyNow=1");
+    } catch {
+      setMessage("YOUR BROWSER COULD NOT START CHECKOUT. PLEASE TRY AGAIN.");
+    }
   }
 
   const arrowStyle: React.CSSProperties = {
@@ -358,8 +360,7 @@ function ProductContent({ initialProduct, initialRelatedProducts }: ProductClien
   };
 
   const tabButton = (
-    key: "description" | "details" | "shipping",
-    label: string
+    key: "description" | "details" | "shipping"
   ): React.CSSProperties => ({
     flex: 1,
     padding: "12px 4px",
@@ -847,19 +848,19 @@ function ProductContent({ initialProduct, initialRelatedProducts }: ProductClien
             <div style={{ display: "flex" }}>
               <button
                 onClick={() => setTab("description")}
-                style={tabButton("description", "DESCRIPTION")}
+                style={tabButton("description")}
               >
                 DESCRIPTION
               </button>
               <button
                 onClick={() => setTab("details")}
-                style={tabButton("details", "DETAILS")}
+                style={tabButton("details")}
               >
                 DETAILS
               </button>
               <button
                 onClick={() => setTab("shipping")}
-                style={tabButton("shipping", "SHIPPING")}
+                style={tabButton("shipping")}
               >
                 SHIPPING
               </button>
