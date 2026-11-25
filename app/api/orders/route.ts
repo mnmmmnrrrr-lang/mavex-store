@@ -7,6 +7,39 @@ function escapeHtml(value: string) {
   return value.replace(/[&<>"']/g, character => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character] || character);
 }
 
+function formatTelegramOrder(order: StoreOrder) {
+  const address = [order.customer.street, order.customer.building, order.customer.village, order.customer.city, order.governorate]
+    .filter(Boolean)
+    .join(", ");
+  const items = order.items.map(item =>
+    `• <b>${escapeHtml(item.name.slice(0, 100))}</b> — ${escapeHtml(item.size.slice(0, 30))} / ${escapeHtml((item.color || "").slice(0, 50))} × ${item.quantity} — EGP ${(item.price * item.quantity).toLocaleString("en-EG")}`
+  );
+  const header = [
+    "🛍️ <b>New MAVEX order</b>",
+    `<b>Order:</b> ${escapeHtml(order.id)}`,
+    `<b>Customer:</b> ${escapeHtml(order.customer.name)}`,
+    `<b>Phone:</b> ${escapeHtml(order.customer.phone)}`,
+    ...(order.customer.email ? [`<b>Email:</b> ${escapeHtml(order.customer.email)}`] : []),
+    `<b>Address:</b> ${escapeHtml(address.slice(0, 240))}`,
+    `<b>Payment:</b> ${escapeHtml(order.payment)}`,
+    "<b>Items:</b>",
+  ].join("\n") + "\n";
+  const total = `\n<b>Total:</b> EGP ${order.total.toLocaleString("en-EG")}`;
+  const messages: string[] = [];
+  let current = header;
+
+  for (const item of items) {
+    if (current.length + item.length + total.length > 3900) {
+      messages.push(current.trimEnd());
+      current = `🛍️ <b>Order ${escapeHtml(order.id)} — items continued</b>\n`;
+    }
+    current += `${item}\n`;
+  }
+
+  messages.push(current + total);
+  return messages;
+}
+
 async function notifyAdmin(order: StoreOrder) {
   const apiKey = process.env.RESEND_API_KEY;
   const adminEmail = process.env.MAVEX_ADMIN_EMAIL;
@@ -68,36 +101,48 @@ export async function POST(request: NextRequest) {
     };
     await saveOrder(order);
 
-    const telegramBotToken = process.env.TELEGRAM_BOT_TOKEN?.trim();
-    const telegramRouteUrl = process.env.VERCEL_URL
-      ? `https://${process.env.VERCEL_URL.replace(/^https?:\/\//, "")}/api/telegram-notify`
-      : new URL("/api/telegram-notify", process.env.NEXT_PUBLIC_SITE_URL || `http://localhost:${process.env.PORT || "3000"}`).toString();
+    const token = process.env.TELEGRAM_BOT_TOKEN?.trim();
+    const chatId = process.env.TELEGRAM_CHAT_ID?.trim();
+    console.log("Telegram token exists:", !!token);
+    console.log("Telegram chat ID exists:", !!chatId);
+
+    if (!token || !chatId) {
+      console.error("Telegram notification skipped: TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID is missing.");
+    } else {
+      try {
+        for (const text of formatTelegramOrder(order)) {
+          const telegramResponse = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ chat_id: chatId, text, parse_mode: "HTML" }),
+            signal: AbortSignal.timeout(8000),
+          });
+          const telegramPayload = await telegramResponse.json().catch(() => null);
+          const result = {
+            ok: telegramPayload?.ok === true,
+            status: telegramResponse.status,
+            error_code: telegramPayload?.error_code,
+            description: typeof telegramPayload?.description === "string" ? telegramPayload.description : undefined,
+            message_id: typeof telegramPayload?.result?.message_id === "number" ? telegramPayload.result.message_id : undefined,
+          };
+          console.log("Telegram API response:", result);
+          if (!telegramResponse.ok || !result.ok) {
+            console.error("Telegram did not accept the order notification.");
+            break;
+          }
+        }
+      } catch (error) {
+        console.error("Telegram request failed:", error instanceof Error ? error.message : "Unknown Telegram error");
+      }
+    }
 
     after(async () => {
-      const emailNotification = notifyAdmin(order)
-        .then(sent => { if (!sent) console.warn("Order saved; admin email notification is not configured."); })
-        .catch(error => console.error("Order saved, but admin email notification failed:", error instanceof Error ? error.message : "Unknown email error"));
-
-      const telegramNotification = (async () => {
-        if (!telegramBotToken || !process.env.TELEGRAM_CHAT_ID?.trim()) {
-          console.warn("Order saved; Telegram notification is not configured.");
-          return;
-        }
-        try {
-          const response = await fetch(telegramRouteUrl, {
-            method: "POST",
-            headers: { Authorization: `Bearer ${telegramBotToken}`, "Content-Type": "application/json" },
-            body: JSON.stringify(order),
-            cache: "no-store",
-            signal: AbortSignal.timeout(10_000),
-          });
-          if (!response.ok) console.error("Order saved, but Telegram notification endpoint returned:", response.status);
-        } catch (error) {
-          console.error("Order saved, but Telegram notification failed:", error instanceof Error ? error.message : "Unknown Telegram error");
-        }
-      })();
-
-      await Promise.all([emailNotification, telegramNotification]);
+      try {
+        const sent = await notifyAdmin(order);
+        if (!sent) console.warn("Order saved; admin email notification is not configured.");
+      } catch (error) {
+        console.error("Order saved, but admin email notification failed:", error instanceof Error ? error.message : "Unknown email error");
+      }
     });
 
     return NextResponse.json({ id: order.id }, { status: 201 });
