@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
+import SizeFinder, { type SizeFinderOption } from "./size-finder";
 
 type Variant = {
   id: string;
@@ -167,6 +168,17 @@ function ProductContent({ initialProduct, initialRelatedProducts }: ProductClien
   const sizes = [
     ...new Set(variants.filter((v) => v.color === color).map((v) => v.size)),
   ];
+  const sizeFinderOptions: SizeFinderOption[] = sizes.flatMap((item) => {
+    const row = measurements.find((measurement) => measurement.size === item);
+    if (!row) return [];
+    const variant = variants.find((candidate) => candidate.color === color && candidate.size === item);
+    return [{
+      size: item,
+      width: Number(row.width),
+      length: Number(row.length),
+      stock: variant?.stock_quantity ?? 0,
+    }];
+  });
 
   const selectedVariant = variants.find(
     (v) => v.color === color && v.size === size
@@ -563,19 +575,22 @@ function ProductContent({ initialProduct, initialRelatedProducts }: ProductClien
             <p style={{ fontSize: 13, fontWeight: "bold", margin: 0 }}>
               SELECT SIZE
             </p>
-            <button
-              onClick={() => setShowSizeGuide((s) => !s)}
-              style={{
-                background: "none",
-                border: 0,
-                fontSize: 12,
-                textDecoration: "underline",
-                cursor: "pointer",
-                color: "#111",
-              }}
-            >
-              {showSizeGuide ? "HIDE SIZE GUIDE" : "SIZE GUIDE"}
-            </button>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 16, flexWrap: "wrap" }}>
+              <button
+                onClick={() => setShowSizeGuide((s) => !s)}
+                style={{
+                  background: "none",
+                  border: 0,
+                  fontSize: 12,
+                  textDecoration: "underline",
+                  cursor: "pointer",
+                  color: "#111",
+                }}
+              >
+                {showSizeGuide ? "HIDE SIZE GUIDE" : "SIZE GUIDE"}
+              </button>
+              <SizeFinder title={sizeGuideTitle} options={sizeFinderOptions} pants={pantsGuide} onApply={changeSize} />
+            </div>
           </div>
 
           <div
