@@ -389,12 +389,14 @@ export default function CheckoutPage() {
                   <strong>{PAYMENT.vodafoneNumber}</strong>
                 </p>
               ) : (
-                <p style={{ lineHeight: 1.8 }}>
-                  Send the order payment to <strong>{PAYMENT.instaPayAddress}</strong> using InstaPay:
-                </p>
-                <a href={PAYMENT.instaPayLink} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", minHeight: 44, marginTop: 10, padding: "10px 16px", background: "#111", color: "#fff", textDecoration: "none", fontSize: 13, fontWeight: 700 }}>
-                  OPEN INSTAPAY PAYMENT LINK
-                </a>
+                <>
+                  <p style={{ lineHeight: 1.8 }}>
+                    Send the order payment to <strong>{PAYMENT.instaPayAddress}</strong> using InstaPay:
+                  </p>
+                  <a href={PAYMENT.instaPayLink} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", minHeight: 44, marginTop: 10, padding: "10px 16px", background: "#111", color: "#fff", textDecoration: "none", fontSize: 13, fontWeight: 700 }}>
+                    OPEN INSTAPAY PAYMENT LINK
+                  </a>
+                </>
               )}
 
               <p style={{ fontSize: 12, margin: "12px 0" }}>
