@@ -22,6 +22,19 @@ const PAYMENT = {
   instaPayLink: "https://ipn.eg/S/minanabil29/instapay/5JsRg4",
 };
 
+const PAYMENT_LABELS: Record<string, string> = {
+  cod: "Cash on Delivery",
+  vodafone: "Vodafone Cash",
+  instapay: "InstaPay",
+};
+
+type OrderConfirmation = {
+  id: string;
+  customerName: string;
+  payment: string;
+  total: number;
+};
+
 export default function CheckoutPage() {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [payment, setPayment] = useState("cod");
@@ -32,7 +45,9 @@ export default function CheckoutPage() {
   const [message, setMessage] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [savingOrder, setSavingOrder] = useState(false);
-  const [recentOrderId, setRecentOrderId] = useState("");
+  const [confirmation, setConfirmation] = useState<OrderConfirmation | null>(null);
+  const [orderNumberCopied, setOrderNumberCopied] = useState(false);
+  const [copyError, setCopyError] = useState("");
 
   const [form, setForm] = useState({
     name: "",
@@ -176,13 +191,40 @@ export default function CheckoutPage() {
       }
 
       setCart([]);
-      setRecentOrderId(result.id);
-      setMessage("Your order was received successfully. Order: " + result.id);
+      setConfirmation({
+        id: String(result.id),
+        customerName: form.name.trim(),
+        payment: typeof result.payment === "string" ? result.payment : payment,
+        total: Number.isFinite(Number(result.total)) ? Number(result.total) : total,
+      });
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Could not save your order.");
     } finally {
       setSavingOrder(false);
     }
+  }
+
+  async function copyOrderNumber() {
+    if (!confirmation) return;
+    setCopyError("");
+    try {
+      await navigator.clipboard.writeText(confirmation.id);
+    } catch {
+      const copyField = document.createElement("textarea");
+      copyField.value = confirmation.id;
+      copyField.setAttribute("readonly", "");
+      copyField.style.position = "fixed";
+      copyField.style.opacity = "0";
+      document.body.appendChild(copyField);
+      copyField.select();
+      const copied = document.execCommand("copy");
+      copyField.remove();
+      if (!copied) {
+        setCopyError("Copy was unavailable. You can select the order number above.");
+        return;
+      }
+    }
+    setOrderNumberCopied(true);
   }
 
   const inputStyle = {
@@ -197,6 +239,54 @@ export default function CheckoutPage() {
   };
   const errorStyle = { color: "#b42318", fontSize: 12, display: "block" as const, marginTop: 6 };
   const fieldStyle = (field: string) => ({ ...inputStyle, borderColor: fieldErrors[field] ? "#b42318" : "#ddd" });
+
+  if (confirmation) {
+    return (
+      <main className="order-confirmation-page">
+        <header className="order-confirmation-header">
+          <Link href="/" aria-label="MAVEX home">MAVEX®</Link>
+        </header>
+        <section className="order-confirmation-card" role="status" aria-live="polite">
+          <div className="order-confirmation-check" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="34" height="34" fill="none">
+              <path d="m5 12.5 4.5 4.5L19 7" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </div>
+          <p className="order-confirmation-eyebrow">MAVEX ORDER UPDATE</p>
+          <h1>ORDER CONFIRMED!</h1>
+          <p className="order-confirmation-intro">Thank you. Your order has been received successfully.</p>
+          {confirmation.payment !== "cod" && (
+            <p className="order-confirmation-payment-note">
+              Your {PAYMENT_LABELS[confirmation.payment] || "online payment"} transfer will be reviewed before your order is processed.
+            </p>
+          )}
+
+          <div className="order-confirmation-reference">
+            <div className="order-confirmation-number-copy">
+              <span>ORDER NUMBER</span>
+              <strong>{confirmation.id}</strong>
+            </div>
+            <button type="button" onClick={() => void copyOrderNumber()}>
+              {orderNumberCopied ? "COPIED!" : "COPY ORDER NUMBER"}
+            </button>
+          </div>
+          {copyError && <p className="order-confirmation-copy-error" role="status">{copyError}</p>}
+
+          <div className="order-confirmation-summary">
+            <div><span>Customer</span><strong>{confirmation.customerName}</strong></div>
+            <div><span>Payment method</span><strong>{PAYMENT_LABELS[confirmation.payment] || confirmation.payment}</strong></div>
+            <div><span>Total</span><strong>EGP {confirmation.total.toLocaleString("en-EG")}</strong></div>
+          </div>
+
+          <div className="order-confirmation-actions">
+            <Link href="/account" className="order-confirmation-primary">TRACK MY ORDER</Link>
+            <Link href="/" className="order-confirmation-secondary">CONTINUE SHOPPING</Link>
+          </div>
+          <p className="order-confirmation-tracking-note">Sign in to My Orders with the same email address used at checkout to view updates.</p>
+        </section>
+      </main>
+    );
+  }
 
   return (
     <main style={{
@@ -453,7 +543,6 @@ export default function CheckoutPage() {
               {message}
             </p>
           )}
-          {recentOrderId && <p style={{ marginTop: 12, fontSize: 13 }}><Link href="/account" style={{ color: "#5e2a49", fontWeight: 700 }}>Sign in to My Orders to track this order</Link></p>}
         </section>
 
         <aside style={{

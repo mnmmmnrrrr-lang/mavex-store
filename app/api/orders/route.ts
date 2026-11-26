@@ -101,6 +101,7 @@ async function notifyTelegram(order: StoreOrder) {
 export async function POST(request: NextRequest) {
   let uploadedProof = "";
   let savedOrderId = "";
+  let savedOrder: StoreOrder | null = null;
   try {
     const contentLength = Number(request.headers.get("content-length") || 0);
     if (contentLength > MAX_ORDER_BODY_BYTES) {
@@ -191,6 +192,7 @@ export async function POST(request: NextRequest) {
     await saveOrder(order);
     uploadedProof = "";
     savedOrderId = order.id;
+    savedOrder = order;
 
     try { after(async () => {
       try {
@@ -208,11 +210,11 @@ export async function POST(request: NextRequest) {
       console.error("Order saved, but background notifications could not be scheduled:", error);
     }
 
-    return NextResponse.json({ id: order.id }, { status: 201, headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json({ id: order.id, total: order.total, payment: order.payment }, { status: 201, headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     if (uploadedProof) await deletePaymentProof(uploadedProof).catch((cleanupError) => console.error("Could not remove an unsaved payment proof:", cleanupError));
     console.error("Could not create a MAVEX order:", error);
-    if (savedOrderId) return NextResponse.json({ id: savedOrderId }, { status: 201, headers: { "Cache-Control": "no-store" } });
+    if (savedOrderId) return NextResponse.json({ id: savedOrderId, total: savedOrder?.total, payment: savedOrder?.payment }, { status: 201, headers: { "Cache-Control": "no-store" } });
     const detail = error instanceof Error ? error.message : "";
     const safeError = detail.startsWith("Could not upload the payment proof:") || detail.startsWith("The payment proof")
       ? detail
