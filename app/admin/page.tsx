@@ -5,6 +5,8 @@ import Image from "next/image";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { canLinkProducts, getProductType, PRODUCT_GARMENT_TYPES, type ProductGarmentType } from "@/lib/product-type";
+import StorefrontManager from "./storefront-manager";
+import { DEFAULT_STOREFRONT_CONFIG, type StorefrontConfig } from "@/lib/storefront-config";
 
 type VariantDraft = {
   draftKey: string;
@@ -28,6 +30,9 @@ type AdminProduct = {
   price: number;
   compare_at_price: number | null;
   sort_order?: number;
+  collection_id?: string | null;
+  subcategory_id?: string | null;
+  is_featured?: boolean;
   size_guide?: { size: string; label?: string; width: number; length: number }[];
   size_guide_title?: string;
   size_guide_size_label?: string;
@@ -151,6 +156,12 @@ async function fetchAdminCatalog(): Promise<AdminProduct[] | null> {
   return result.products || [];
 }
 
+async function fetchAdminStorefront(): Promise<StorefrontConfig> {
+  const response = await fetch("/api/admin/storefront", { cache: "no-store" });
+  if (!response.ok) return DEFAULT_STOREFRONT_CONFIG;
+  return await response.json() as StorefrontConfig;
+}
+
 function makeQuickProductEdit(product: AdminProduct): QuickProductEdit {
   return {
     price: String(product.price),
@@ -198,6 +209,10 @@ export default function AdminPage() {
   const [loggedIn, setLoggedIn] = useState(false);
   const [password, setPassword] = useState("");
   const [products, setProducts] = useState<AdminProduct[]>([]);
+  const [storefrontConfig, setStorefrontConfig] = useState<StorefrontConfig>(DEFAULT_STOREFRONT_CONFIG);
+  const [collectionId, setCollectionId] = useState(DEFAULT_STOREFRONT_CONFIG.collections[0]?.id || "");
+  const [subcategoryId, setSubcategoryId] = useState(DEFAULT_STOREFRONT_CONFIG.collections[0]?.subcategories[0]?.id || "");
+  const [isFeatured, setIsFeatured] = useState(false);
   const [quickEdits, setQuickEdits] = useState<Record<string, QuickProductEdit>>({});
   const [quickSavingId, setQuickSavingId] = useState<string | null>(null);
   const [orderSaving, setOrderSaving] = useState(false);
@@ -220,15 +235,18 @@ export default function AdminPage() {
   const [retainedProductImages, setRetainedProductImages] = useState<string[]>([]);
   const [video, setVideo] = useState<File | null>(null);
   const [removeVideo, setRemoveVideo] = useState(false);
-  const [activeTab, setActiveTab] = useState<"products" | "orders" | "returns" | "comments">("products");
+  const [activeTab, setActiveTab] = useState<"storefront" | "products" | "orders" | "returns" | "comments">("storefront");
   const [operations, setOperations] = useState<OperationsData>({ orders: [], returns: [], comments: [] });
   const [returnReplies, setReturnReplies] = useState<Record<string, string>>({});
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
 
   async function loadProducts() {
-    const savedProducts = await fetchAdminCatalog();
+    const [savedProducts, savedStorefront] = await Promise.all([fetchAdminCatalog(), fetchAdminStorefront()]);
     if (!savedProducts) return false;
+    setStorefrontConfig(savedStorefront);
+    setCollectionId((current) => savedStorefront.collections.some((item) => item.id === current) ? current : savedStorefront.collections[0]?.id || "");
+    setSubcategoryId((current) => savedStorefront.collections.some((item) => item.subcategories.some((subcategory) => subcategory.id === current)) ? current : "");
     setProducts(sortAdminProducts(savedProducts));
     setLoggedIn(true);
     await loadOperations();
@@ -252,9 +270,12 @@ export default function AdminPage() {
 
   useEffect(() => {
     let cancelled = false;
-    fetchAdminCatalog()
-      .then((savedProducts) => {
+    Promise.all([fetchAdminCatalog(), fetchAdminStorefront()])
+      .then(([savedProducts, savedStorefront]) => {
         if (cancelled || !savedProducts) return;
+        setStorefrontConfig(savedStorefront);
+        setCollectionId((current) => savedStorefront.collections.some((item) => item.id === current) ? current : savedStorefront.collections[0]?.id || "");
+        setSubcategoryId((current) => savedStorefront.collections.some((item) => item.subcategories.some((subcategory) => subcategory.id === current)) ? current : "");
         setProducts(sortAdminProducts(savedProducts));
         setLoggedIn(true);
         void loadOperations();
@@ -321,6 +342,10 @@ export default function AdminPage() {
     setSizeGuideSizeLabel("SIZE");
     setSizeGuideWidthLabel("WIDTH");
     setSizeGuideLengthLabel("LENGTH");
+    const firstCollection = storefrontConfig.collections[0];
+    setCollectionId(firstCollection?.id || "");
+    setSubcategoryId(firstCollection?.subcategories[0]?.id || "");
+    setIsFeatured(false);
     setImages([]);
     setRetainedProductImages([]);
     setVideo(null);
@@ -335,6 +360,9 @@ export default function AdminPage() {
     setEditingId(product.id);
     setEditingProduct(product);
     setName(product.name);
+    setCollectionId(product.collection_id || storefrontConfig.collections[0]?.id || "");
+    setSubcategoryId(product.subcategory_id || "");
+    setIsFeatured(product.is_featured === true);
     setProductType(getProductType(product.name, product.product_type));
     setDescription(product.description || "");
     const pantsGuide = /pant|jogger|trouser/i.test(product.name);
@@ -436,6 +464,9 @@ export default function AdminPage() {
     form.set("description", description);
     form.set("price", price);
     form.set("compareAtPrice", compareAtPrice);
+    form.set("collectionId", collectionId);
+    form.set("subcategoryId", subcategoryId);
+    form.set("isFeatured", String(isFeatured));
     if (!editingId) form.set("sortOrder", String(Math.max(-1, ...products.map((product) => product.sort_order ?? -1)) + 1));
     form.set("variants", JSON.stringify(variants.map((variant) => ({
       id: variant.id,
@@ -683,6 +714,7 @@ export default function AdminPage() {
 
   const labelStyle = { display: "block", marginBottom: 7, fontSize: 12, fontWeight: 700 };
   const productSizes = [...new Set(variants.map((variant) => variant.size))];
+  const selectedCollection = storefrontConfig.collections.find((item) => item.id === collectionId) || storefrontConfig.collections[0];
 
   return (
     <main style={{ minHeight: "100vh", background: "#f6f6f6", color: "#111", padding: "24px 5% 60px", fontFamily: "Arial, sans-serif" }}>
@@ -705,7 +737,7 @@ export default function AdminPage() {
       ) : (
         <>
         <nav aria-label="Admin sections" style={{ maxWidth: 1180, margin: "0 auto 20px", display: "flex", gap: 8, overflowX: "auto", background: "#fff", padding: 9, borderRadius: 12, boxShadow: "0 8px 30px #0000000d" }}>
-          {([ ["products", "Products", products.length], ["orders", "Orders", operations.orders.length], ["returns", "Returns", operations.returns.length], ["comments", "Comments", operations.comments.filter(c => c.status === "pending").length] ] as const).map(([key, label, count]) => <button key={key} type="button" onClick={() => { setActiveTab(key); if (key !== "products") void loadOperations(); }} style={{ flex: 1, minWidth: 120, border: 0, borderRadius: 8, padding: "13px 16px", cursor: "pointer", fontWeight: 800, background: activeTab === key ? "#17213c" : "#f4f4f6", color: activeTab === key ? "#fff" : "#272727" }}>{label}<span style={{ display: "inline-grid", placeItems: "center", minWidth: 23, height: 23, marginInlineStart: 8, borderRadius: 20, background: activeTab === key ? "#f890c8" : "#fff", color: "#111", fontSize: 11 }}>{count}</span></button>)}
+          {([ ["storefront", "Storefront", storefrontConfig.collections.length], ["products", "Products", products.length], ["orders", "Orders", operations.orders.length], ["returns", "Returns", operations.returns.length], ["comments", "Comments", operations.comments.filter(c => c.status === "pending").length] ] as const).map(([key, label, count]) => <button key={key} type="button" onClick={() => { setActiveTab(key); if (["orders", "returns", "comments"].includes(key)) void loadOperations(); }} style={{ flex: 1, minWidth: 120, border: 0, borderRadius: 8, padding: "13px 16px", cursor: "pointer", fontWeight: 800, background: activeTab === key ? "#17213c" : "#f4f4f6", color: activeTab === key ? "#fff" : "#272727" }}>{label}<span style={{ display: "inline-grid", placeItems: "center", minWidth: 23, height: 23, marginInlineStart: 8, borderRadius: 20, background: activeTab === key ? "#f890c8" : "#fff", color: "#111", fontSize: 11 }}>{count}</span></button>)}
           <button type="button" onClick={logout} style={{ border: "1px solid #eee", borderRadius: 8, padding: "0 15px", background: "#fff", cursor: "pointer" }}>LOG OUT</button>
         </nav>
         {activeTab === "products" ? (
@@ -733,6 +765,20 @@ export default function AdminPage() {
 
               <label htmlFor="product-description" style={{ ...labelStyle, marginTop: 14 }}>Description</label>
               <textarea id="product-description" maxLength={5000} value={description} onChange={(event) => setDescription(event.target.value)} rows={3} style={{ ...inputStyle, resize: "vertical" }} />
+
+              <fieldset className="product-placement-fields">
+                <legend>Where should this product appear?</legend>
+                {storefrontConfig.collections.length ? <>
+                  <label>Main collection<select required value={selectedCollection?.id || ""} onChange={(event) => { setCollectionId(event.target.value); setSubcategoryId(""); }} style={inputStyle}>
+                    {storefrontConfig.collections.map((collection) => <option key={collection.id} value={collection.id}>{collection.name}</option>)}
+                  </select></label>
+                  <label>Sub-category<select value={selectedCollection?.subcategories.some((item) => item.id === subcategoryId) ? subcategoryId : ""} onChange={(event) => setSubcategoryId(event.target.value)} style={inputStyle}>
+                    <option value="">Directly in this main collection</option>
+                    {(selectedCollection?.subcategories || []).map((subcategory) => <option key={subcategory.id} value={subcategory.id}>{subcategory.name}</option>)}
+                  </select></label>
+                  <label className="product-placement-featured"><input type="checkbox" checked={isFeatured} onChange={(event) => setIsFeatured(event.target.checked)} /> Feature this product at the top of its listing</label>
+                </> : <p>No main collections yet. Create one in the Storefront tab before saving a product.</p>}
+              </fieldset>
 
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 14 }}>
                 <div><label htmlFor="product-price" style={labelStyle}>Price (EGP)</label><input id="product-price" type="number" min="1" step="1" required value={price} onChange={(event) => setPrice(event.target.value)} style={inputStyle} /></div>
@@ -867,6 +913,13 @@ export default function AdminPage() {
             })}
           </aside>
         </div>
+        ) : activeTab === "storefront" ? (
+          <StorefrontManager config={storefrontConfig} onSaved={(next) => {
+            setStorefrontConfig(next);
+            setCollectionId((current) => next.collections.some((item) => item.id === current) ? current : next.collections[0]?.id || "");
+            setSubcategoryId((current) => next.collections.some((item) => item.subcategories.some((subcategory) => subcategory.id === current)) ? current : "");
+            void fetchAdminCatalog().then((savedProducts) => { if (savedProducts) setProducts(sortAdminProducts(savedProducts)); });
+          }} />
         ) : <div style={{ maxWidth: 1180, margin: "0 auto", display: "grid", gap: 16 }}>
           {activeTab === "orders" && (
             <section style={{ background: "#fff", padding: 22, borderRadius: 12 }}>

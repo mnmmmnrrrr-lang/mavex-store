@@ -3,6 +3,8 @@ import { revalidatePath } from "next/cache";
 import { ADMIN_COOKIE, isAdminSessionValid } from "../../../../../lib/admin-auth";
 import { CatalogProduct, parseColorProductLinks } from "../../../../../lib/admin-store";
 import { getCatalogProduct, getCatalogProducts } from "../../../../../lib/catalog-server";
+import { getStorefrontConfig } from "../../../../../lib/storefront-server";
+import { validateProductPlacement } from "../../../../../lib/storefront-config";
 import { validateColorProductLinks } from "../../../../../lib/color-product-links";
 import { PRODUCT_GARMENT_TYPES, getProductType, type ProductGarmentType } from "../../../../../lib/product-type";
 import { deleteCatalogProduct, deleteProductImage, deleteProductVideo, getProductImagePublicUrl, getProductVideoPublicUrl, isProductImagePath, isProductVideoPath, saveCatalogProduct, saveProductImage } from "../../../../../lib/store-db";
@@ -95,6 +97,9 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     await saveCatalogProduct(updated);
     revalidatePath("/", "page");
     revalidatePath("/product/[id]", "page");
+    revalidatePath("/shop", "page");
+    revalidatePath("/collection/[collectionSlug]", "page");
+    revalidatePath("/collection/[collectionSlug]/[subCategorySlug]", "page");
     return NextResponse.json(updated);
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Could not save price and stock." }, { status: 400 });
@@ -135,6 +140,9 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     const colorProductLinks = form.has("colorProductLinks")
       ? parseColorProductLinks(form.get("colorProductLinks"))
       : current.color_product_links || [];
+    const placement = form.has("collectionId") || form.has("subcategoryId")
+      ? validateProductPlacement(String(form.get("collectionId") || "").trim(), String(form.get("subcategoryId") || "").trim(), await getStorefrontConfig())
+      : { collection_id: current.collection_id ?? null, subcategory_id: current.subcategory_id ?? null };
     if (colorProductLinks.some((link) => link.product_id === id)) throw new Error("A product cannot link to itself as another color.");
     await validateColorProductLinks(id, { name, product_type: productType }, colorProductLinks);
 
@@ -190,6 +198,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       ...current,
       name,
       product_type: productType,
+      ...placement,
+      is_featured: form.has("isFeatured") ? form.get("isFeatured") === "true" : current.is_featured === true,
       description,
       price,
       compare_at_price: compareAtPrice,
@@ -245,6 +255,9 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     await saveCatalogProduct(nextProduct);
     revalidatePath("/", "page");
     revalidatePath("/product/[id]", "page");
+    revalidatePath("/shop", "page");
+    revalidatePath("/collection/[collectionSlug]", "page");
+    revalidatePath("/collection/[collectionSlug]/[subCategorySlug]", "page");
     const nextImageUrls = new Set(nextProduct.product_images.map((image) => image.image_url));
     const oldImages = current.product_images.filter((image) => !nextImageUrls.has(image.image_url)).map((image) => image.image_url);
     const oldVideo = current.product_video_url && current.product_video_url !== nextProduct.product_video_url
@@ -270,6 +283,10 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
 
   try {
     await deleteCatalogProduct(id);
+    revalidatePath("/", "page");
+    revalidatePath("/shop", "page");
+    revalidatePath("/collection/[collectionSlug]", "page");
+    revalidatePath("/collection/[collectionSlug]/[subCategorySlug]", "page");
     return NextResponse.json({ ok: true });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Could not delete the product." }, { status: 503 });

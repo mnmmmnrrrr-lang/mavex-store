@@ -4,16 +4,17 @@ import { ADMIN_COOKIE, isAdminSessionValid } from "../../../../lib/admin-auth";
 import { getProductImageExtension, getProductVideoExtension, isProductImagePath, isProductVideoPath, PRODUCT_IMAGE_BUCKET, PRODUCT_VIDEO_BUCKET } from "../../../../lib/store-db";
 import { getSupabaseAdmin } from "../../../../lib/supabase-admin";
 
-type MediaKind = "image" | "video";
+type MediaKind = "image" | "video" | "collection";
 
 function isAuthorized(request: NextRequest) {
   return isAdminSessionValid(request.cookies.get(ADMIN_COOKIE)?.value);
 }
 
 function getMediaConfig(kind: MediaKind, contentType: string) {
-  const extension = kind === "image" ? getProductImageExtension(contentType) : getProductVideoExtension(contentType);
+  const imageKind = kind === "image" || kind === "collection";
+  const extension = imageKind ? getProductImageExtension(contentType) : getProductVideoExtension(contentType);
   if (!extension) return null;
-  return { extension, bucket: kind === "image" ? PRODUCT_IMAGE_BUCKET : PRODUCT_VIDEO_BUCKET };
+  return { extension, bucket: imageKind ? PRODUCT_IMAGE_BUCKET : PRODUCT_VIDEO_BUCKET };
 }
 
 export async function POST(request: NextRequest) {
@@ -22,10 +23,10 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json() as { kind?: unknown; contentType?: unknown };
     const kind = String(body.kind || "") as MediaKind;
-    const config = kind === "image" || kind === "video" ? getMediaConfig(kind, String(body.contentType || "")) : null;
+    const config = kind === "image" || kind === "video" || kind === "collection" ? getMediaConfig(kind, String(body.contentType || "")) : null;
     if (!config) return NextResponse.json({ error: "Choose a supported product image or video format." }, { status: 400 });
 
-    const folder = kind === "image" ? "product-uploads" : "admin-uploads";
+    const folder = kind === "collection" ? "collection-uploads" : kind === "image" ? "product-uploads" : "admin-uploads";
     const path = `${folder}/${randomUUID()}.${config.extension}`;
     const { data, error } = await getSupabaseAdmin().storage.from(config.bucket).createSignedUploadUrl(path);
     if (error) throw new Error(error.message);
@@ -42,9 +43,9 @@ export async function DELETE(request: NextRequest) {
     const body = await request.json() as { kind?: unknown; path?: unknown };
     const kind = String(body.kind || "") as MediaKind;
     const path = String(body.path || "");
-    const valid = kind === "image" ? isProductImagePath(path) : kind === "video" ? isProductVideoPath(path) : false;
+    const valid = kind === "image" ? isProductImagePath(path) : kind === "video" ? isProductVideoPath(path) : kind === "collection" ? /^collection-uploads\/[0-9a-f-]+\.(jpg|png|webp)$/i.test(path) : false;
     if (!valid) return NextResponse.json({ error: "Invalid product media upload." }, { status: 400 });
-    const bucket = kind === "image" ? PRODUCT_IMAGE_BUCKET : PRODUCT_VIDEO_BUCKET;
+    const bucket = kind === "video" ? PRODUCT_VIDEO_BUCKET : PRODUCT_IMAGE_BUCKET;
     const { error } = await getSupabaseAdmin().storage.from(bucket).remove([path]);
     if (error) throw new Error(error.message);
     return NextResponse.json({ ok: true });

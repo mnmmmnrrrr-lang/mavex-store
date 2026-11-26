@@ -2,28 +2,29 @@ import Image from "next/image";
 import Link from "next/link";
 import { getStorefrontProducts, type StorefrontProduct } from "@/lib/catalog-server";
 import { localProducts } from "@/lib/catalog";
+import { getStorefrontConfig } from "@/lib/storefront-server";
+import { inferProductPlacement } from "@/lib/storefront-config";
 import HomeSearch from "./home-search";
 import AccountNav from "./account-nav";
-import ProductCard from "./product-card";
+import CollectionCard from "./collection-card";
 
 export const revalidate = 60;
 
-const fallbackImages = [
-  "https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=700",
-  "https://images.unsplash.com/photo-1503342217505-b0a15ec3261c?w=700",
-  "https://images.unsplash.com/photo-1576566588028-4147f3842f27?w=700",
-  "https://images.unsplash.com/photo-1556821840-3a63f95609a7?w=700",
-];
-
 export default async function Home() {
   let loadError = false;
+  const storefrontConfig = await getStorefrontConfig();
+  const collections = [...storefrontConfig.collections].sort((a, b) => a.sort_order - b.sort_order);
   let products: StorefrontProduct[];
 
   try {
     products = await getStorefrontProducts();
   } catch (error) {
     console.error("Could not load the MAVEX collection:", error);
-    products = localProducts;
+    products = localProducts.map((product) => ({
+      ...product,
+      ...inferProductPlacement(product, storefrontConfig),
+      is_featured: false,
+    }));
     loadError = true;
   }
 
@@ -46,7 +47,7 @@ export default async function Home() {
         </h1>
         <nav>
           <Link href="#home">HOME</Link>
-          <Link href="#shop">SHOP</Link>
+          <Link href="/shop">SHOP</Link>
           <Link href="#about">ABOUT</Link>
           <AccountNav />
         </nav>
@@ -74,20 +75,10 @@ export default async function Home() {
       <section className="products" id="shop">
         <p>DISCOVER MAVEX</p>
         <h2>WINTER 27 COLLECTION<span>.</span></h2>
-        {loadError && <p>THE LOCAL COLLECTION IS SHOWN. SOME PRODUCTS MAY BE UNAVAILABLE.</p>}
-        {products.length === 0 && <p>NO PRODUCTS AVAILABLE RIGHT NOW.</p>}
-
-        <div className="product-grid">
-          {products.map((product, index) => {
-            return (
-              <ProductCard
-                key={product.id}
-                product={product}
-                fallbackImage={fallbackImages[index % fallbackImages.length]}
-              />
-            );
-          })}
-        </div>
+        {loadError && <p>THE STARTER COLLECTION IS SHOWN WHILE THE CATALOG RECONNECTS.</p>}
+        {collections.length === 0 ? <p>NO COLLECTIONS AVAILABLE RIGHT NOW.</p> : <div className="collection-grid">
+          {collections.map((collection) => <CollectionCard key={collection.id} name={collection.name} image={collection.image_url} href={`/collection/${encodeURIComponent(collection.slug)}`} />)}
+        </div>}
       </section>
 
       <section className="about" id="about">

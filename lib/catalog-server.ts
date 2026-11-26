@@ -3,8 +3,14 @@ import { localProducts } from "@/lib/catalog";
 import { CatalogProduct } from "@/lib/admin-store";
 import { getCatalogOverlay } from "@/lib/store-db";
 import { getSupabaseAdmin, hasSupabaseAdmin } from "@/lib/supabase-admin";
+import { inferProductPlacement } from "@/lib/storefront-config";
+import { getStorefrontConfig } from "@/lib/storefront-server";
 
-export type StorefrontProduct = Pick<CatalogProduct, "id" | "name" | "description" | "price" | "compare_at_price" | "product_images" | "sort_order">;
+export type StorefrontProduct = Pick<CatalogProduct, "id" | "name" | "description" | "price" | "compare_at_price" | "product_images" | "sort_order"> & {
+  collection_id: string | null;
+  subcategory_id: string | null;
+  is_featured: boolean;
+};
 
 function orderByDisplayPosition<T extends { sort_order?: number }>(products: T[]): (T & { sort_order: number })[] {
   const highestSavedOrder = products.reduce(
@@ -30,6 +36,9 @@ function toStorefrontProduct(product: Partial<CatalogProduct> & Pick<CatalogProd
     compare_at_price: product.compare_at_price ?? null,
     sort_order: product.sort_order,
     product_images: product.product_images || [],
+    collection_id: product.collection_id ?? null,
+    subcategory_id: product.subcategory_id ?? null,
+    is_featured: product.is_featured === true,
   };
 }
 
@@ -40,7 +49,7 @@ export async function getStorefrontProducts(): Promise<StorefrontProduct[]> {
       .select("id, name, description, price, compare_at_price, product_images(image_url, alt_text, sort_order)")
       .eq("status", "active")
     : null;
-  const [state, databaseResult] = await Promise.all([getCatalogOverlay(), databaseQuery]);
+  const [state, databaseResult, storefrontConfig] = await Promise.all([getCatalogOverlay(), databaseQuery, getStorefrontConfig()]);
   if (databaseResult?.error) console.error("Could not load database products:", databaseResult.error.message);
 
   const deleted = new Set(state.deletedIds);
@@ -52,7 +61,11 @@ export async function getStorefrontProducts(): Promise<StorefrontProduct[]> {
   for (const product of state.products) {
     if (!deleted.has(product.id)) merged.set(product.id, toStorefrontProduct(product));
   }
-  return orderByDisplayPosition([...merged.values()]);
+  return orderByDisplayPosition([...merged.values()]).map((product) => ({
+    ...product,
+    ...inferProductPlacement(product, storefrontConfig),
+    is_featured: product.is_featured === true,
+  }));
 }
 
 export async function getRelatedStorefrontProducts(

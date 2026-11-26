@@ -10,6 +10,9 @@ export type CatalogProduct = {
   sort_order?: number;
   status?: string;
   product_type?: string;
+  collection_id?: string | null;
+  subcategory_id?: string | null;
+  is_featured?: boolean;
   size_guide?: { size: string; label?: string; width: number; length: number }[];
   size_guide_title?: string;
   size_guide_size_label?: string;

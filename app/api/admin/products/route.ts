@@ -8,6 +8,8 @@ import {
   parseColorProductLinks,
 } from "../../../../lib/admin-store";
 import { getCatalogProducts } from "../../../../lib/catalog-server";
+import { getStorefrontConfig } from "../../../../lib/storefront-server";
+import { inferProductPlacement, validateProductPlacement } from "../../../../lib/storefront-config";
 import { validateColorProductLinks } from "../../../../lib/color-product-links";
 import { PRODUCT_GARMENT_TYPES, type ProductGarmentType } from "../../../../lib/product-type";
 import { deleteProductImage, deleteProductVideo, getProductImagePublicUrl, getProductVideoPublicUrl, isProductImagePath, isProductVideoPath, saveCatalogProduct, saveProductImage } from "../../../../lib/store-db";
@@ -100,7 +102,10 @@ function parseProduct(form: FormData) {
   const sizeGuideWidthLabel = String(form.get("sizeGuideWidthLabel") || "WIDTH").trim().slice(0, 20);
   const sizeGuideLengthLabel = String(form.get("sizeGuideLengthLabel") || "LENGTH").trim().slice(0, 20);
   const colorProductLinks = parseColorProductLinks(form.get("colorProductLinks"));
-  return { name, productType, description, price, compareAtPrice, variants, colorProductLinks, sizeGuide, sizeGuideTitle, sizeGuideSizeLabel, sizeGuideWidthLabel, sizeGuideLengthLabel };
+  const collectionId = String(form.get("collectionId") || "").trim();
+  const subcategoryId = String(form.get("subcategoryId") || "").trim();
+  const isFeatured = form.get("isFeatured") === "true";
+  return { name, productType, description, price, compareAtPrice, variants, colorProductLinks, sizeGuide, sizeGuideTitle, sizeGuideSizeLabel, sizeGuideWidthLabel, sizeGuideLengthLabel, collectionId, subcategoryId, isFeatured };
 }
 
 function isAuthorized(request: NextRequest) {
@@ -126,7 +131,8 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    return NextResponse.json({ products: await getCatalogProducts(true) }, { headers: { "Cache-Control": "no-store" } });
+    const [products, config] = await Promise.all([getCatalogProducts(true), getStorefrontConfig()]);
+    return NextResponse.json({ products: products.map((product) => ({ ...product, ...inferProductPlacement(product, config) })), collections: config.collections }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Could not load products." }, { status: 503 });
   }
@@ -160,6 +166,9 @@ export async function PATCH(request: NextRequest) {
       return saveCatalogProduct({ ...product, sort_order });
     }));
     revalidatePath("/", "page");
+    revalidatePath("/shop", "page");
+    revalidatePath("/collection/[collectionSlug]", "page");
+    revalidatePath("/collection/[collectionSlug]/[subCategorySlug]", "page");
     return NextResponse.json({ products: await getCatalogProducts(true) });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Could not reorder products." }, { status: 400 });
@@ -177,6 +186,7 @@ export async function POST(request: NextRequest) {
   try {
     const form = await request.formData();
     const fields = parseProduct(form);
+    const placement = validateProductPlacement(fields.collectionId, fields.subcategoryId, await getStorefrontConfig());
     const existingProducts = await getCatalogProducts(true);
     const requestedOrderValue = String(form.get("sortOrder") ?? "").trim();
     const requestedOrder = requestedOrderValue ? Number(requestedOrderValue) : Number.NaN;
@@ -207,6 +217,8 @@ export async function POST(request: NextRequest) {
       slug: id,
       name: fields.name,
       product_type: fields.productType,
+      ...placement,
+      is_featured: fields.isFeatured,
       description: fields.description,
       price: fields.price,
       compare_at_price: fields.compareAtPrice,
@@ -225,6 +237,9 @@ export async function POST(request: NextRequest) {
     await saveCatalogProduct(product);
     revalidatePath("/", "page");
     revalidatePath("/product/[id]", "page");
+    revalidatePath("/shop", "page");
+    revalidatePath("/collection/[collectionSlug]", "page");
+    revalidatePath("/collection/[collectionSlug]/[subCategorySlug]", "page");
     uploadedVideoPath = "";
     uploadedImagePaths = [];
     uploadedLegacyImageUrls = [];
