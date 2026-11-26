@@ -3,15 +3,20 @@ import Link from "next/link";
 import { getStorefrontProducts } from "@/lib/catalog-server";
 import { localProducts } from "@/lib/catalog";
 import { inferProductPlacement, type StorefrontConfig } from "@/lib/storefront-config";
-import { getStorefrontConfig } from "@/lib/storefront-server";
+import { getPublicStorefrontConfig } from "@/lib/storefront-server";
 import CollectionCard from "../../collection-card";
 
 export const revalidate = 60;
 
+export async function generateStaticParams() {
+  const config = await getPublicStorefrontConfig();
+  return config.collections.map((collection) => ({ collectionSlug: collection.slug }));
+}
+
 export default async function CollectionPage({ params }: { params: Promise<{ collectionSlug: string }> }) {
   const { collectionSlug } = await params;
   const [config, loadedProducts] = await Promise.all([
-    getStorefrontConfig(),
+    getPublicStorefrontConfig(),
     getStorefrontProducts().catch(() => null),
   ]);
   const collection = config.collections.find((item) => item.slug === collectionSlug);
@@ -40,7 +45,7 @@ export default async function CollectionPage({ params }: { params: Promise<{ col
       <p><Link href="/">MAVEX / COLLECTIONS</Link></p>
       <h1>{collection.name}<span>.</span></h1>
       {cards.length ? <div className="collection-grid">
-        {cards.map((card) => <CollectionCard key={card.href} name={card.name} image={card.image} href={card.href} buttonLabel="VIEW PRODUCTS" />)}
+        {cards.map((card, index) => <CollectionCard key={card.href} name={card.name} image={card.image} href={card.href} buttonLabel="VIEW PRODUCTS" priority={index === 0} />)}
       </div> : <p className="collection-empty">No product categories are available in this collection yet.</p>}
     </main>
   );

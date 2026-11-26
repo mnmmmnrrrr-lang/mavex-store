@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { NextRequest, NextResponse } from "next/server";
 import { ADMIN_COOKIE, isAdminSessionValid } from "../../../../lib/admin-auth";
 import {
@@ -12,6 +12,7 @@ import { getStorefrontConfig } from "../../../../lib/storefront-server";
 import { inferProductPlacement, validateProductPlacement } from "../../../../lib/storefront-config";
 import { validateColorProductLinks } from "../../../../lib/color-product-links";
 import { PRODUCT_GARMENT_TYPES, type ProductGarmentType } from "../../../../lib/product-type";
+import { STOREFRONT_CACHE_TAG } from "../../../../lib/storefront-cache";
 import { deleteProductImage, deleteProductVideo, getProductImagePublicUrl, getProductVideoPublicUrl, isProductImagePath, isProductVideoPath, saveCatalogProduct, saveProductImage } from "../../../../lib/store-db";
 
 type VariantInput = {
@@ -165,6 +166,8 @@ export async function PATCH(request: NextRequest) {
       const product = byId.get(id as string)!;
       return saveCatalogProduct({ ...product, sort_order });
     }));
+    revalidateTag(STOREFRONT_CACHE_TAG, { expire: 0 });
+    revalidatePath("/", "layout");
     revalidatePath("/", "page");
     revalidatePath("/shop", "page");
     revalidatePath("/collection/[collectionSlug]", "page");
@@ -235,6 +238,8 @@ export async function POST(request: NextRequest) {
     };
 
     await saveCatalogProduct(product);
+    revalidateTag(STOREFRONT_CACHE_TAG, { expire: 0 });
+    revalidatePath("/", "layout");
     revalidatePath("/", "page");
     revalidatePath("/product/[id]", "page");
     revalidatePath("/shop", "page");

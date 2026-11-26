@@ -15,10 +15,12 @@ type ProductCardItem = {
 export default function ProductCard({
   product,
   fallbackImage,
+  priority = false,
   sizes = "(max-width: 700px) 50vw, (max-width: 1100px) 33vw, 25vw",
 }: {
   product: ProductCardItem;
   fallbackImage?: string;
+  priority?: boolean;
   sizes?: string;
 }) {
   const [hovered, setHovered] = useState(false);
@@ -103,7 +105,8 @@ export default function ProductCard({
                 height={850}
                 sizes={sizes}
                 quality={90}
-                loading="lazy"
+                priority={priority}
+                loading={priority ? "eager" : "lazy"}
                 aria-hidden={showingBack}
               />
             ) : (
@@ -118,6 +121,7 @@ export default function ProductCard({
                 height={850}
                 sizes={sizes}
                 quality={90}
+                // This image is only mounted after hover/touch, so it never delays the initial page render.
                 loading="eager"
                 onLoad={() => setBackLoaded(true)}
                 onError={() => setBackFailed(true)}

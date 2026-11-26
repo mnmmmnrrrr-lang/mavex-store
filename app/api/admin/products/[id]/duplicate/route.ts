@@ -1,10 +1,11 @@
 import { randomBytes } from "node:crypto";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { NextRequest, NextResponse } from "next/server";
 import { ADMIN_COOKIE, isAdminSessionValid } from "../../../../../../lib/admin-auth";
 import { makeSlug, type CatalogProduct } from "../../../../../../lib/admin-store";
 import { getCatalogProduct, getCatalogProducts } from "../../../../../../lib/catalog-server";
 import { saveCatalogProduct } from "../../../../../../lib/store-db";
+import { STOREFRONT_CACHE_TAG } from "../../../../../../lib/storefront-cache";
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   if (!isAdminSessionValid(request.cookies.get(ADMIN_COOKIE)?.value)) {
@@ -36,6 +37,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     };
 
     await saveCatalogProduct(duplicate);
+    revalidateTag(STOREFRONT_CACHE_TAG, { expire: 0 });
+    revalidatePath("/", "layout");
     revalidatePath("/", "page");
     revalidatePath("/product/[id]", "page");
     return NextResponse.json(duplicate, { status: 201 });

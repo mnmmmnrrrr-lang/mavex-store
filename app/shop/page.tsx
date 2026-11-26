@@ -14,7 +14,7 @@ export default async function ShopPage() {
     <main className="products collection-page">
       <p><Link href="/">MAVEX / HOME</Link></p>
       <h1>SHOP ALL<span>.</span></h1>
-      {products.length ? <div className="product-grid">{products.map((product) => <ProductCard key={product.id} product={product} />)}</div> : <p className="collection-empty">No products are available right now.</p>}
+      {products.length ? <div className="product-grid">{products.map((product, index) => <ProductCard key={product.id} product={product} priority={index === 0} />)}</div> : <p className="collection-empty">No products are available right now.</p>}
     </main>
   );
 }

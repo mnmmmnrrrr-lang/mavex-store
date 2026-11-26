@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { ADMIN_COOKIE, isAdminSessionValid } from "../../../../../lib/admin-auth";
 import { CatalogProduct, parseColorProductLinks } from "../../../../../lib/admin-store";
 import { getCatalogProduct, getCatalogProducts } from "../../../../../lib/catalog-server";
@@ -7,6 +7,7 @@ import { getStorefrontConfig } from "../../../../../lib/storefront-server";
 import { validateProductPlacement } from "../../../../../lib/storefront-config";
 import { validateColorProductLinks } from "../../../../../lib/color-product-links";
 import { PRODUCT_GARMENT_TYPES, getProductType, type ProductGarmentType } from "../../../../../lib/product-type";
+import { STOREFRONT_CACHE_TAG } from "../../../../../lib/storefront-cache";
 import { deleteCatalogProduct, deleteProductImage, deleteProductVideo, getManagedProductImageStoragePath, getProductImagePublicUrl, getProductVideoPublicUrl, isProductImagePath, isProductVideoPath, saveCatalogProduct, saveProductImage } from "../../../../../lib/store-db";
 
 type VariantInput = { id?: string; color?: unknown; size?: unknown; stock_quantity?: unknown; price_override?: unknown; is_active?: unknown };
@@ -100,6 +101,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     };
 
     await saveCatalogProduct(updated);
+    revalidateTag(STOREFRONT_CACHE_TAG, { expire: 0 });
+    revalidatePath("/", "layout");
     revalidatePath("/", "page");
     revalidatePath("/product/[id]", "page");
     revalidatePath("/shop", "page");
@@ -258,6 +261,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       .map((photo, index) => ({ ...photo, sort_order: index }));
 
     await saveCatalogProduct(nextProduct);
+    revalidateTag(STOREFRONT_CACHE_TAG, { expire: 0 });
+    revalidatePath("/", "layout");
     revalidatePath("/", "page");
     revalidatePath("/product/[id]", "page");
     revalidatePath("/shop", "page");
@@ -293,6 +298,8 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     if (imageUrls.length) {
       await deleteSupersededMedia(id, imageUrls, null);
     }
+    revalidateTag(STOREFRONT_CACHE_TAG, { expire: 0 });
+    revalidatePath("/", "layout");
     revalidatePath("/", "page");
     revalidatePath("/shop", "page");
     revalidatePath("/collection/[collectionSlug]", "page");

@@ -1,9 +1,10 @@
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { NextRequest, NextResponse } from "next/server";
 import { ADMIN_COOKIE, isAdminSessionValid } from "@/lib/admin-auth";
 import { getCatalogProducts } from "@/lib/catalog-server";
 import { deleteRemovedCollectionImages, getStorefrontConfig, saveStorefrontConfig, validateStorefrontConfig } from "@/lib/storefront-server";
 import { saveCatalogProduct } from "@/lib/store-db";
+import { STOREFRONT_CACHE_TAG } from "@/lib/storefront-cache";
 
 function isAuthorized(request: NextRequest) {
   return isAdminSessionValid(request.cookies.get(ADMIN_COOKIE)?.value);
@@ -42,6 +43,8 @@ export async function PUT(request: NextRequest) {
     await saveStorefrontConfig(next);
 
     await deleteRemovedCollectionImages(previous, next);
+    revalidateTag(STOREFRONT_CACHE_TAG, { expire: 0 });
+    revalidatePath("/", "layout");
     revalidatePath("/", "page");
     revalidatePath("/shop", "page");
     revalidatePath("/collection/[collectionSlug]", "page");

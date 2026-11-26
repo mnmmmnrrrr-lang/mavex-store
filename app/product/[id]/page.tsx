@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { cache } from "react";
 import { notFound } from "next/navigation";
 import ProductClient, { type Product } from "./product-client";
-import { getCatalogProduct, getCatalogProducts, getRelatedStorefrontProducts } from "@/lib/catalog-server";
+import { getPublicCatalogProduct, getCatalogProducts, getRelatedStorefrontProducts } from "@/lib/catalog-server";
 import { localProducts } from "@/lib/catalog";
 
 export const revalidate = 60;
@@ -13,7 +13,7 @@ type ProductPageProps = {
 
 const readProduct = cache(async (id: string) => {
   try {
-    return await getCatalogProduct(id);
+    return await getPublicCatalogProduct(id);
   } catch (error) {
     console.error("Could not load the hosted MAVEX product:", error);
     return localProducts.find((product) => product.id === id || product.slug === id) ?? null;

@@ -1,10 +1,12 @@
+import { unstable_cache } from "next/cache";
 import { hasSupabasePublic, supabase } from "@/lib/supabase";
 import { localProducts } from "@/lib/catalog";
+import { STOREFRONT_CACHE_TAG } from "@/lib/storefront-cache";
 import { CatalogProduct } from "@/lib/admin-store";
 import { getCatalogOverlay } from "@/lib/store-db";
 import { getSupabaseAdmin, hasSupabaseAdmin } from "@/lib/supabase-admin";
 import { inferProductPlacement } from "@/lib/storefront-config";
-import { getStorefrontConfig } from "@/lib/storefront-server";
+import { getPublicStorefrontConfig } from "@/lib/storefront-server";
 
 export type StorefrontProduct = Pick<CatalogProduct, "id" | "name" | "description" | "price" | "compare_at_price" | "product_images" | "sort_order"> & {
   collection_id: string | null;
@@ -42,14 +44,14 @@ function toStorefrontProduct(product: Partial<CatalogProduct> & Pick<CatalogProd
   };
 }
 
-export async function getStorefrontProducts(): Promise<StorefrontProduct[]> {
+async function readStorefrontProducts(): Promise<StorefrontProduct[]> {
   const databaseQuery = hasSupabasePublic()
     ? supabase
       .from("products")
       .select("id, name, description, price, compare_at_price, product_images(image_url, alt_text, sort_order)")
       .eq("status", "active")
     : null;
-  const [state, databaseResult, storefrontConfig] = await Promise.all([getCatalogOverlay(), databaseQuery, getStorefrontConfig()]);
+  const [state, databaseResult, storefrontConfig] = await Promise.all([getCatalogOverlay(), databaseQuery, getPublicStorefrontConfig()]);
   if (databaseResult?.error) console.error("Could not load database products:", databaseResult.error.message);
 
   const deleted = new Set(state.deletedIds);
@@ -68,7 +70,17 @@ export async function getStorefrontProducts(): Promise<StorefrontProduct[]> {
   }));
 }
 
-export async function getRelatedStorefrontProducts(
+const readCachedStorefrontProducts = unstable_cache(
+  readStorefrontProducts,
+  ["mavex-public-storefront-products"],
+  { revalidate: 60, tags: [STOREFRONT_CACHE_TAG] },
+);
+
+export function getStorefrontProducts(): Promise<StorefrontProduct[]> {
+  return readCachedStorefrontProducts();
+}
+
+async function readRelatedStorefrontProducts(
   excludedId: string,
   group: "tops" | "bottoms",
   limit = 4
@@ -101,6 +113,20 @@ export async function getRelatedStorefrontProducts(
   return [...sameGroup, ...otherGroup]
     .slice(0, limit)
     .map((product) => toStorefrontProduct(product));
+}
+
+const readCachedRelatedStorefrontProducts = unstable_cache(
+  readRelatedStorefrontProducts,
+  ["mavex-public-related-products"],
+  { revalidate: 60, tags: [STOREFRONT_CACHE_TAG] },
+);
+
+export function getRelatedStorefrontProducts(
+  excludedId: string,
+  group: "tops" | "bottoms",
+  limit = 4,
+): Promise<StorefrontProduct[]> {
+  return readCachedRelatedStorefrontProducts(excludedId, group, limit);
 }
 
 export async function getCatalogProducts(includeInactive = false): Promise<CatalogProduct[]> {
@@ -174,4 +200,14 @@ export async function getCatalogProduct(id: string, includeInactive = false) {
   }
 
   return databaseProduct || localProduct || null;
+}
+
+const readCachedPublicCatalogProduct = unstable_cache(
+  async (id: string) => getCatalogProduct(id),
+  ["mavex-public-catalog-product"],
+  { revalidate: 60, tags: [STOREFRONT_CACHE_TAG] },
+);
+
+export function getPublicCatalogProduct(id: string): Promise<CatalogProduct | null> {
+  return readCachedPublicCatalogProduct(id);
 }

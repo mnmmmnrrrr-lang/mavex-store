@@ -1,4 +1,6 @@
+import { unstable_cache } from "next/cache";
 import { DEFAULT_STOREFRONT_CONFIG, type StorefrontConfig, type StorefrontCollection, type StorefrontSubCategory } from "@/lib/storefront-config";
+import { STOREFRONT_CACHE_TAG } from "@/lib/storefront-cache";
 import { getSupabaseAdmin, hasSupabaseAdmin } from "@/lib/supabase-admin";
 import { deleteProductImage, getManagedProductImageStoragePath } from "@/lib/store-db";
 
@@ -23,6 +25,16 @@ export async function getStorefrontConfig(): Promise<StorefrontConfig> {
     console.error("Could not load storefront collections; using defaults:", error);
     return DEFAULT_STOREFRONT_CONFIG;
   }
+}
+
+const readCachedStorefrontConfig = unstable_cache(
+  async () => getStorefrontConfig(),
+  ["mavex-public-storefront-config"],
+  { revalidate: 60, tags: [STOREFRONT_CACHE_TAG] },
+);
+
+export async function getPublicStorefrontConfig(): Promise<StorefrontConfig> {
+  return readCachedStorefrontConfig();
 }
 
 function validateImageUrl(value: unknown) {

@@ -2,7 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { getStorefrontProducts, type StorefrontProduct } from "@/lib/catalog-server";
 import { localProducts } from "@/lib/catalog";
-import { getStorefrontConfig } from "@/lib/storefront-server";
+import { getPublicStorefrontConfig } from "@/lib/storefront-server";
 import { inferProductPlacement } from "@/lib/storefront-config";
 import HomeSearch from "./home-search";
 import AccountNav from "./account-nav";
@@ -12,7 +12,7 @@ export const revalidate = 60;
 
 export default async function Home() {
   let loadError = false;
-  const storefrontConfig = await getStorefrontConfig();
+  const storefrontConfig = await getPublicStorefrontConfig();
   const collections = [...storefrontConfig.collections].sort((a, b) => a.sort_order - b.sort_order);
   let products: StorefrontProduct[];
 
