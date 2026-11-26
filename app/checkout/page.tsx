@@ -26,6 +26,7 @@ export default function CheckoutPage() {
   const [payment, setPayment] = useState("cod");
   const [governorate, setGovernorate] = useState("");
   const [proof, setProof] = useState("");
+  const [readingProof, setReadingProof] = useState(false);
   const [transaction, setTransaction] = useState("");
   const [message, setMessage] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -93,6 +94,9 @@ export default function CheckoutPage() {
   function handleProof(file?: File) {
     if (!file) return;
 
+    setProof("");
+    setReadingProof(false);
+
     if (!/^image\/(jpeg|png|webp)$/.test(file.type)) {
       setFieldErrors((old) => ({ ...old, proof: "Choose a JPG, PNG, or WebP image for your payment screenshot." }));
       return;
@@ -104,8 +108,21 @@ export default function CheckoutPage() {
     }
 
     setFieldErrors((old) => ({ ...old, proof: "" }));
+    setReadingProof(true);
     const reader = new FileReader();
-    reader.onload = () => setProof(String(reader.result));
+    reader.onload = () => {
+      if (typeof reader.result !== "string" || !reader.result.startsWith("data:image/")) {
+        setFieldErrors((old) => ({ ...old, proof: "We couldn't read this image. Please choose it again." }));
+        setReadingProof(false);
+        return;
+      }
+      setProof(reader.result);
+      setReadingProof(false);
+    };
+    reader.onerror = () => {
+      setFieldErrors((old) => ({ ...old, proof: "We couldn't read this image. Please choose it again." }));
+      setReadingProof(false);
+    };
     reader.readAsDataURL(file);
   }
 
@@ -125,7 +142,8 @@ export default function CheckoutPage() {
     if (!form.city.trim()) nextErrors.city = "Enter your city or district.";
     if (!form.village.trim()) nextErrors.village = "Enter your village or area.";
     if (!form.street.trim()) nextErrors.street = "Enter your street address.";
-    if (payment !== "cod" && !proof) nextErrors.proof = "Upload your payment transfer screenshot.";
+    if (payment !== "cod" && readingProof) nextErrors.proof = "Please wait for the payment screenshot to finish loading.";
+    else if (payment !== "cod" && !proof) nextErrors.proof = "Upload your payment transfer screenshot.";
     if (Object.keys(nextErrors).length) {
       setFieldErrors(nextErrors);
       setMessage("");
@@ -386,8 +404,10 @@ export default function CheckoutPage() {
                 Payment screenshot *
               </label>
               <input style={{ ...inputStyle, padding: 10 }}
-                type="file" accept="image/*"
+                type="file" accept="image/jpeg,image/png,image/webp"
                 onChange={(e) => handleProof(e.target.files?.[0])} />
+
+              {readingProof && <small style={{ display: "block", marginTop: 6, color: "#555" }}>Reading screenshot…</small>}
 
               {proof && (
                 <Image src={proof} alt="Payment proof" width={130} height={130} unoptimized

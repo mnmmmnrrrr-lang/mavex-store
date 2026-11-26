@@ -3,7 +3,9 @@ import { getCatalogProduct } from "../../../lib/catalog-server";
 import { newOperationId, StoreOrder } from "../../../lib/operations-store";
 import { deletePaymentProof, saveOrder, savePaymentProof } from "../../../lib/store-db";
 
-const MAX_ORDER_BODY_BYTES = 5 * 1024 * 1024;
+// Vercel's request payload ceiling is below the previous 5 MiB guard. A 3 MiB
+// image expands to about 4 MiB when sent as base64, plus the checkout fields.
+const MAX_ORDER_BODY_BYTES = Math.floor(4.4 * 1024 * 1024);
 type RecordValue = Record<string, unknown>;
 
 function isRecord(value: unknown): value is RecordValue {
@@ -102,7 +104,7 @@ export async function POST(request: NextRequest) {
   try {
     const contentLength = Number(request.headers.get("content-length") || 0);
     if (contentLength > MAX_ORDER_BODY_BYTES) {
-      return NextResponse.json({ error: "The order request is too large." }, { status: 413 });
+      return NextResponse.json({ error: "The payment screenshot makes this order too large. Please upload an image smaller than 3 MB." }, { status: 413 });
     }
 
     let body: unknown;
@@ -211,6 +213,10 @@ export async function POST(request: NextRequest) {
     if (uploadedProof) await deletePaymentProof(uploadedProof).catch((cleanupError) => console.error("Could not remove an unsaved payment proof:", cleanupError));
     console.error("Could not create a MAVEX order:", error);
     if (savedOrderId) return NextResponse.json({ id: savedOrderId }, { status: 201, headers: { "Cache-Control": "no-store" } });
-    return NextResponse.json({ error: "Could not save your order. Please try again." }, { status: 503 });
+    const detail = error instanceof Error ? error.message : "";
+    const safeError = detail.startsWith("Could not upload the payment proof:") || detail.startsWith("The payment proof")
+      ? detail
+      : "Could not save your order. Please try again.";
+    return NextResponse.json({ error: safeError }, { status: 503 });
   }
 }
