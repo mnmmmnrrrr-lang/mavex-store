@@ -9,6 +9,7 @@ export type CatalogProduct = {
   compare_at_price: number | null;
   sort_order?: number;
   status?: string;
+  product_type?: string;
   size_guide?: { size: string; label?: string; width: number; length: number }[];
   size_guide_title?: string;
   size_guide_size_label?: string;

@@ -9,6 +9,7 @@ import {
 } from "../../../../lib/admin-store";
 import { getCatalogProducts } from "../../../../lib/catalog-server";
 import { validateColorProductLinks } from "../../../../lib/color-product-links";
+import { PRODUCT_GARMENT_TYPES, type ProductGarmentType } from "../../../../lib/product-type";
 import { deleteProductImage, deleteProductVideo, getProductImagePublicUrl, getProductVideoPublicUrl, isProductImagePath, isProductVideoPath, saveCatalogProduct, saveProductImage } from "../../../../lib/store-db";
 
 type VariantInput = {
@@ -24,6 +25,8 @@ type SizeGuideInput = { size?: unknown; label?: unknown; width?: unknown; length
 
 function parseProduct(form: FormData) {
   const name = String(form.get("name") || "").trim();
+  const typeValue = String(form.get("productType") || "");
+  const productType = (PRODUCT_GARMENT_TYPES as readonly string[]).includes(typeValue) ? typeValue as ProductGarmentType : "other";
   const description = String(form.get("description") || "").trim();
   const price = Number(form.get("price"));
   const compareValue = String(form.get("compareAtPrice") || "").trim();
@@ -97,7 +100,7 @@ function parseProduct(form: FormData) {
   const sizeGuideWidthLabel = String(form.get("sizeGuideWidthLabel") || "WIDTH").trim().slice(0, 20);
   const sizeGuideLengthLabel = String(form.get("sizeGuideLengthLabel") || "LENGTH").trim().slice(0, 20);
   const colorProductLinks = parseColorProductLinks(form.get("colorProductLinks"));
-  return { name, description, price, compareAtPrice, variants, colorProductLinks, sizeGuide, sizeGuideTitle, sizeGuideSizeLabel, sizeGuideWidthLabel, sizeGuideLengthLabel };
+  return { name, productType, description, price, compareAtPrice, variants, colorProductLinks, sizeGuide, sizeGuideTitle, sizeGuideSizeLabel, sizeGuideWidthLabel, sizeGuideLengthLabel };
 }
 
 function isAuthorized(request: NextRequest) {
@@ -189,7 +192,7 @@ export async function POST(request: NextRequest) {
     }
 
     const id = makeSlug(fields.name) + "-" + randomBytes(3).toString("hex");
-    await validateColorProductLinks(id, fields.name, fields.colorProductLinks);
+    await validateColorProductLinks(id, { name: fields.name, product_type: fields.productType }, fields.colorProductLinks);
     const legacyImages = await Promise.all(images.map(async (image, index) => {
       const imageUrl = await saveProductImage(id, image);
       uploadedLegacyImageUrls.push(imageUrl);
@@ -203,6 +206,7 @@ export async function POST(request: NextRequest) {
       id,
       slug: id,
       name: fields.name,
+      product_type: fields.productType,
       description: fields.description,
       price: fields.price,
       compare_at_price: fields.compareAtPrice,

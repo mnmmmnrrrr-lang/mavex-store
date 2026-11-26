@@ -4,7 +4,7 @@ import { FormEvent, useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
-import { canLinkColorProduct } from "@/lib/product-type";
+import { canLinkProducts, getProductType, PRODUCT_GARMENT_TYPES, type ProductGarmentType } from "@/lib/product-type";
 
 type VariantDraft = {
   draftKey: string;
@@ -23,6 +23,7 @@ type AdminProduct = {
   slug: string;
   status?: string;
   name: string;
+  product_type?: string;
   description: string | null;
   price: number;
   compare_at_price: number | null;
@@ -204,6 +205,7 @@ export default function AdminPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingProduct, setEditingProduct] = useState<AdminProduct | null>(null);
   const [name, setName] = useState("");
+  const [productType, setProductType] = useState<ProductGarmentType>("other");
   const [description, setDescription] = useState("");
   const [price, setPrice] = useState("600");
   const [compareAtPrice, setCompareAtPrice] = useState("1000");
@@ -308,6 +310,7 @@ export default function AdminPage() {
     setEditingId(null);
     setEditingProduct(null);
     setName("");
+    setProductType("other");
     setDescription("");
     setPrice("600");
     setCompareAtPrice("1000");
@@ -332,6 +335,7 @@ export default function AdminPage() {
     setEditingId(product.id);
     setEditingProduct(product);
     setName(product.name);
+    setProductType(getProductType(product.name, product.product_type));
     setDescription(product.description || "");
     const pantsGuide = /pant|jogger|trouser/i.test(product.name);
     setSizeGuideTitle(product.size_guide_title || (pantsGuide ? "PANTS" : "HOODIE"));
@@ -428,6 +432,7 @@ export default function AdminPage() {
     setMessage("");
     const form = new FormData();
     form.set("name", name);
+    form.set("productType", productType);
     form.set("description", description);
     form.set("price", price);
     form.set("compareAtPrice", compareAtPrice);
@@ -716,7 +721,15 @@ export default function AdminPage() {
 
             <form onSubmit={saveProduct}>
               <label htmlFor="product-name" style={labelStyle}>Product name</label>
-              <input id="product-name" required maxLength={120} value={name} onChange={(event) => setName(event.target.value)} style={inputStyle} />
+              <input id="product-name" required maxLength={120} value={name} onChange={(event) => {
+                const nextName = event.target.value;
+                setName(nextName);
+                if (!editingId) setProductType(getProductType(nextName));
+              }} style={inputStyle} />
+              <label htmlFor="product-type" style={{ ...labelStyle, marginTop: 12 }}>Product type (used to match color variants)</label>
+              <select id="product-type" value={productType} onChange={(event) => setProductType(event.target.value as ProductGarmentType)} style={inputStyle}>
+                {PRODUCT_GARMENT_TYPES.map((type) => <option key={type} value={type}>{type === "bottoms" ? "Pants / Joggers" : type === "tshirt" ? "T-shirt" : type.charAt(0).toUpperCase() + type.slice(1)}</option>)}
+              </select>
 
               <label htmlFor="product-description" style={{ ...labelStyle, marginTop: 14 }}>Description</label>
               <textarea id="product-description" maxLength={5000} value={description} onChange={(event) => setDescription(event.target.value)} rows={3} style={{ ...inputStyle, resize: "vertical" }} />
@@ -760,7 +773,7 @@ export default function AdminPage() {
                       <AdminColorInput label={`Linked color name ${index + 1}`} value={link.color} onChange={(value) => updateColorProductLink(link.draftKey, "color", value)} placeholder="Color (e.g. Burgundy)" />
                       <select aria-label={`Product for linked color ${index + 1}`} required value={link.product_id} onChange={(event) => updateColorProductLink(link.draftKey, "product_id", event.target.value)} style={inputStyle}>
                         <option value="">Choose product</option>
-                        {products.filter((product) => product.id !== editingId && (!product.status || product.status === "active") && canLinkColorProduct(name, product.name)).map((product) => <option key={product.id} value={product.id}>{product.name}</option>)}
+                        {products.filter((product) => product.id !== editingId && (!product.status || product.status === "active") && canLinkProducts({ name, product_type: productType }, product)).map((product) => <option key={product.id} value={product.id}>{product.name}</option>)}
                       </select>
                       <button type="button" aria-label="Remove linked color" onClick={() => setColorProductLinks((current) => current.filter((item) => item.draftKey !== link.draftKey))} style={{ border: 0, background: "transparent", color: "#b42318", fontSize: 20, cursor: "pointer" }}>×</button>
                     </div>

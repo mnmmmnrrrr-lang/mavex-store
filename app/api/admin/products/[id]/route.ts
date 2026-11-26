@@ -4,6 +4,7 @@ import { ADMIN_COOKIE, isAdminSessionValid } from "../../../../../lib/admin-auth
 import { CatalogProduct, parseColorProductLinks } from "../../../../../lib/admin-store";
 import { getCatalogProduct, getCatalogProducts } from "../../../../../lib/catalog-server";
 import { validateColorProductLinks } from "../../../../../lib/color-product-links";
+import { PRODUCT_GARMENT_TYPES, getProductType, type ProductGarmentType } from "../../../../../lib/product-type";
 import { deleteCatalogProduct, deleteProductImage, deleteProductVideo, getProductImagePublicUrl, getProductVideoPublicUrl, isProductImagePath, isProductVideoPath, saveCatalogProduct, saveProductImage } from "../../../../../lib/store-db";
 
 type VariantInput = { id?: string; color?: unknown; size?: unknown; stock_quantity?: unknown; price_override?: unknown; is_active?: unknown };
@@ -119,6 +120,10 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     }
     if (!current) return NextResponse.json({ error: "Product not found." }, { status: 404 });
     const name = String(form.get("name") || "").trim();
+    const typeValue = String(form.get("productType") || current.product_type || "");
+    const productType = (PRODUCT_GARMENT_TYPES as readonly string[]).includes(typeValue)
+      ? typeValue as ProductGarmentType
+      : getProductType(current.name, current.product_type);
     const description = String(form.get("description") || "").trim();
     const price = Number(form.get("price"));
     const compareValue = String(form.get("compareAtPrice") || "").trim();
@@ -131,7 +136,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       ? parseColorProductLinks(form.get("colorProductLinks"))
       : current.color_product_links || [];
     if (colorProductLinks.some((link) => link.product_id === id)) throw new Error("A product cannot link to itself as another color.");
-    await validateColorProductLinks(id, name, colorProductLinks);
+    await validateColorProductLinks(id, { name, product_type: productType }, colorProductLinks);
 
     let inputVariants: VariantInput[];
     try {
@@ -184,6 +189,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     const nextProduct: CatalogProduct = {
       ...current,
       name,
+      product_type: productType,
       description,
       price,
       compare_at_price: compareAtPrice,
