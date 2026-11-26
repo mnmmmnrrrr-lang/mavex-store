@@ -392,7 +392,7 @@ function ProductContent({ initialProduct, initialRelatedProducts }: ProductClien
             style={{
               position: "relative",
               width: "100%",
-              aspectRatio: "4 / 5",
+              aspectRatio: "1 / 1",
               background: "#f5f5f5",
               overflow: "hidden",
             }}
@@ -416,7 +416,7 @@ function ProductContent({ initialProduct, initialRelatedProducts }: ProductClien
                     sizes="(max-width: 700px) 100vw, 58vw"
                     quality={95}
                     priority={imageIndex === 0}
-                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                  style={{ width: "100%", height: "100%", objectFit: "contain" }}
                 />
               )
             ) : (

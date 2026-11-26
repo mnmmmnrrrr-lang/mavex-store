@@ -652,6 +652,12 @@ button {
   align-items: end;
 }
 
+.storefront-editor-cover-field {
+  display: grid;
+  min-width: 0;
+  gap: 6px;
+}
+
 .storefront-editor-cover {
   position: relative;
   width: 100%;
@@ -754,12 +760,26 @@ button {
 
 .storefront-upload-small {
   position: relative;
+  display: grid;
+  gap: 5px;
   padding: 9px 7px;
   border: 1px solid #ddd;
   cursor: pointer;
   font-size: 9px;
   font-weight: 800;
   text-align: center;
+}
+
+.storefront-image-guidance {
+  display: block;
+  color: #777;
+  font-size: 9px;
+  font-weight: 400;
+  line-height: 1.4;
+}
+
+.storefront-upload-small .storefront-image-guidance {
+  text-align: left;
 }
 
 .storefront-upload-small:hover {

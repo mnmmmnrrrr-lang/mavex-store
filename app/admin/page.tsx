@@ -849,7 +849,8 @@ export default function AdminPage() {
                 </div>
               </div>
 
-              <label htmlFor="product-images" style={{ ...labelStyle, marginTop: 18 }}>Product photos (up to 8 images, 5 MB each)</label>
+              <label htmlFor="product-images" style={{ ...labelStyle, marginTop: 18 }}>Product photos (main/back images, up to 8 images, 5 MB each)</label>
+              <small style={{ display: "block", color: "#777", fontSize: 10, marginTop: 5 }}>Recommended size: 1200 x 1200 px (1:1 Square)</small>
               {editingProduct?.product_images?.length ? <div style={{ display: "flex", gap: 9, overflowX: "auto", margin: "8px 0 12px" }}>{editingProduct.product_images.map((photo, index) => {
                 const kept = retainedProductImages.includes(photo.image_url);
                 return <div key={photo.image_url} style={{ position: "relative", flex: "0 0 66px", opacity: kept ? 1 : 0.42 }}>
