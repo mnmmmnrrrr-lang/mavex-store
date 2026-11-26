@@ -113,12 +113,39 @@ export function getProductImagePublicUrl(path: string) {
   return getSupabaseAdmin().storage.from(PRODUCT_IMAGE_BUCKET).getPublicUrl(path).data.publicUrl;
 }
 
+const imageObjectPathPattern = new RegExp(
+  `^(?:product-uploads|collection-uploads)\\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\.(?:jpg|png|webp)$|^[a-z0-9-]{1,120}\\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\.(?:jpg|png|webp)$`,
+  "i",
+);
+
+/**
+ * Resolve only files owned by this app in its Supabase image bucket.
+ * Static `/mavex-products/...` files and third-party URLs intentionally return null.
+ */
+export function getManagedProductImageStoragePath(pathOrUrl: string) {
+  let path = pathOrUrl;
+  if (/^https?:\/\//i.test(pathOrUrl)) {
+    try {
+      const url = new URL(pathOrUrl);
+      const configuredUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      if (!configuredUrl || url.username || url.password) return null;
+      const supabaseOrigin = new URL(configuredUrl).origin;
+      const prefix = `/storage/v1/object/public/${PRODUCT_IMAGE_BUCKET}/`;
+      if (url.origin !== supabaseOrigin || !url.pathname.startsWith(prefix)) return null;
+      path = decodeURIComponent(url.pathname.slice(prefix.length));
+    } catch {
+      return null;
+    }
+  } else if (pathOrUrl.startsWith("/") || pathOrUrl.includes("://")) {
+    return null;
+  }
+
+  return imageObjectPathPattern.test(path) ? path : null;
+}
+
 export async function deleteProductImage(pathOrUrl: string) {
-  const path = pathOrUrl.includes("/storage/v1/object/public/mavex-product-images/")
-    ? pathOrUrl.split("/storage/v1/object/public/mavex-product-images/").pop() || ""
-    : pathOrUrl;
-  const legacyPath = /^[a-z0-9-]+\/[0-9a-f-]+\.(jpg|png|webp)$/i.test(path);
-  if (!isProductImagePath(path) && !legacyPath) return;
+  const path = getManagedProductImageStoragePath(pathOrUrl);
+  if (!path) return;
   const { error } = await getSupabaseAdmin().storage.from(PRODUCT_IMAGE_BUCKET).remove([path]);
   if (error) throw new Error(`Could not remove the product image: ${error.message}`);
 }

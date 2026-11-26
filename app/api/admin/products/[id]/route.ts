@@ -7,7 +7,7 @@ import { getStorefrontConfig } from "../../../../../lib/storefront-server";
 import { validateProductPlacement } from "../../../../../lib/storefront-config";
 import { validateColorProductLinks } from "../../../../../lib/color-product-links";
 import { PRODUCT_GARMENT_TYPES, getProductType, type ProductGarmentType } from "../../../../../lib/product-type";
-import { deleteCatalogProduct, deleteProductImage, deleteProductVideo, getProductImagePublicUrl, getProductVideoPublicUrl, isProductImagePath, isProductVideoPath, saveCatalogProduct, saveProductImage } from "../../../../../lib/store-db";
+import { deleteCatalogProduct, deleteProductImage, deleteProductVideo, getManagedProductImageStoragePath, getProductImagePublicUrl, getProductVideoPublicUrl, isProductImagePath, isProductVideoPath, saveCatalogProduct, saveProductImage } from "../../../../../lib/store-db";
 
 type VariantInput = { id?: string; color?: unknown; size?: unknown; stock_quantity?: unknown; price_override?: unknown; is_active?: unknown };
 type GuideInput = { size?: unknown; label?: unknown; width?: unknown; length?: unknown };
@@ -39,10 +39,15 @@ async function deleteSupersededMedia(productId: string, imageUrls: string[], vid
   }
 
   const otherProducts = products.filter((product) => product.id !== productId);
-  const referencedImages = new Set(otherProducts.flatMap((product) => product.product_images.map((image) => image.image_url)));
+  const referencedImages = new Set(otherProducts
+    .flatMap((product) => (product.product_images || []).map((image) => getManagedProductImageStoragePath(image.image_url)))
+    .filter((path): path is string => Boolean(path)));
   const referencedVideos = new Set(otherProducts.map((product) => product.product_video_url).filter((url): url is string => Boolean(url)));
-  await Promise.all(imageUrls.filter((url) => !referencedImages.has(url)).map((url) =>
-    deleteProductImage(url).catch((error) => console.error("Could not remove a replaced product photo:", error)),
+  const unusedImagePaths = [...new Set(imageUrls
+    .map(getManagedProductImageStoragePath)
+    .filter((path): path is string => Boolean(path)))].filter((path) => !referencedImages.has(path));
+  await Promise.all(unusedImagePaths.map((path) =>
+    deleteProductImage(path).catch((error) => console.error("Could not remove an unused product photo:", error)),
   ));
   if (videoUrl && !referencedVideos.has(videoUrl)) {
     await deleteProductVideo(videoUrl).catch((error) => console.error("Could not remove the replaced product video:", error));
@@ -282,7 +287,12 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
   const { id } = await params;
 
   try {
+    const current = await getCatalogProduct(id, true);
     await deleteCatalogProduct(id);
+    const imageUrls = (current?.product_images || []).map((image) => image.image_url);
+    if (imageUrls.length) {
+      await deleteSupersededMedia(id, imageUrls, null);
+    }
     revalidatePath("/", "page");
     revalidatePath("/shop", "page");
     revalidatePath("/collection/[collectionSlug]", "page");

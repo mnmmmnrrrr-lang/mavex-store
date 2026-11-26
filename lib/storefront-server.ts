@@ -1,5 +1,6 @@
 import { DEFAULT_STOREFRONT_CONFIG, type StorefrontConfig, type StorefrontCollection, type StorefrontSubCategory } from "@/lib/storefront-config";
 import { getSupabaseAdmin, hasSupabaseAdmin } from "@/lib/supabase-admin";
+import { deleteProductImage, getManagedProductImageStoragePath } from "@/lib/store-db";
 
 const CONFIG_ID = "main";
 
@@ -83,20 +84,18 @@ export async function saveStorefrontConfig(config: StorefrontConfig) {
 }
 
 export async function deleteRemovedCollectionImages(previous: StorefrontConfig, next: StorefrontConfig) {
-  const retained = new Set(next.collections.flatMap((collection) => [collection.image_url, ...collection.subcategories.map((item) => item.image_url)]));
-  const removedPaths = [...new Set(previous.collections.flatMap((collection) => [collection.image_url, ...collection.subcategories.map((item) => item.image_url)]))]
-    .filter((imageUrl) => imageUrl && !retained.has(imageUrl))
-    .map((imageUrl) => {
-      try {
-        const url = new URL(imageUrl);
-        const marker = "/storage/v1/object/public/mavex-product-images/collection-uploads/";
-        const index = url.pathname.indexOf(marker);
-        return index >= 0 ? url.pathname.slice(index + marker.length) : "";
-      } catch { return ""; }
-    })
-    .filter((path) => /^[0-9a-f-]{36}\.(jpg|png|webp)$/i.test(path));
-  if (removedPaths.length) {
-    const { error } = await getSupabaseAdmin().storage.from("mavex-product-images").remove(removedPaths);
-    if (error) console.error("Could not remove replaced collection covers:", error.message);
-  }
+  const imageUrls = (config: StorefrontConfig) => config.collections.flatMap((collection) => [
+    collection.image_url,
+    ...collection.subcategories.map((item) => item.image_url),
+  ]);
+  const retainedPaths = new Set(imageUrls(next)
+    .map(getManagedProductImageStoragePath)
+    .filter((path): path is string => Boolean(path)));
+  const removedPaths = [...new Set(imageUrls(previous)
+    .map(getManagedProductImageStoragePath)
+    .filter((path): path is string => Boolean(path)))].filter((path) => !retainedPaths.has(path));
+
+  await Promise.all(removedPaths.map((path) => deleteProductImage(path).catch((error) => {
+    console.error("Could not remove an unused collection cover:", error);
+  })));
 }
