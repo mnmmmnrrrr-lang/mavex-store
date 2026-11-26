@@ -215,7 +215,7 @@ export default function AdminPage() {
   const [sizeGuideWidthLabel, setSizeGuideWidthLabel] = useState("WIDTH");
   const [sizeGuideLengthLabel, setSizeGuideLengthLabel] = useState("LENGTH");
   const [images, setImages] = useState<File[]>([]);
-  const [replaceProductImages, setReplaceProductImages] = useState(false);
+  const [retainedProductImages, setRetainedProductImages] = useState<string[]>([]);
   const [video, setVideo] = useState<File | null>(null);
   const [removeVideo, setRemoveVideo] = useState(false);
   const [activeTab, setActiveTab] = useState<"products" | "orders" | "returns" | "comments">("products");
@@ -319,7 +319,7 @@ export default function AdminPage() {
     setSizeGuideWidthLabel("WIDTH");
     setSizeGuideLengthLabel("LENGTH");
     setImages([]);
-    setReplaceProductImages(false);
+    setRetainedProductImages([]);
     setVideo(null);
     setRemoveVideo(false);
     const fileInput = document.querySelector<HTMLInputElement>("#product-images");
@@ -360,7 +360,7 @@ export default function AdminPage() {
     }
     setSizeMeasurements(guide);
     setImages([]);
-    setReplaceProductImages(false);
+    setRetainedProductImages((product.product_images || []).map((photo) => photo.image_url));
     setVideo(null);
     setRemoveVideo(false);
     setMessage("");
@@ -399,12 +399,13 @@ export default function AdminPage() {
       setMessage("Choose at least one product photo.");
       return;
     }
-    if (replaceProductImages && images.length === 0) {
-      setMessage("Choose the original photos you want to use before replacing the current photos.");
+    const remainingImageCount = editingId ? retainedProductImages.length : 0;
+    if (images.length > 8 || remainingImageCount + images.length > 8) {
+      setMessage("A product can have up to 8 photos.");
       return;
     }
-    if (images.length > 8 || (editingProduct && !replaceProductImages && editingProduct.product_images.length + images.length > 8)) {
-      setMessage("A product can have up to 8 photos.");
+    if (editingId && remainingImageCount + images.length === 0) {
+      setMessage("Keep or add at least one product photo.");
       return;
     }
     if (images.some((image) => image.size > 20 * 1024 * 1024)) {
@@ -453,7 +454,7 @@ export default function AdminPage() {
       length: sizeMeasurements[size]?.length,
     }))));
     form.set("removeVideo", removeVideo ? "true" : "false");
-    form.set("replaceProductImages", replaceProductImages ? "true" : "false");
+    form.set("retainedProductImages", JSON.stringify(retainedProductImages));
 
     const uploadedMedia: UploadedProductMedia[] = [];
     try {
@@ -790,10 +791,16 @@ export default function AdminPage() {
               </div>
 
               <label htmlFor="product-images" style={{ ...labelStyle, marginTop: 18 }}>Product photos (up to 8 images, 5 MB each)</label>
-              {editingProduct?.product_images?.length ? <div style={{ display: "flex", gap: 7, overflowX: "auto", margin: "8px 0" }}>{editingProduct.product_images.map((photo, index) => <Image key={photo.image_url} src={photo.image_url} alt={`${editingProduct.name} ${index + 1}`} width={58} height={66} sizes="58px" quality={80} style={{ width: 58, height: 66, objectFit: "cover", borderRadius: 5 }} />)}</div> : null}
-              {editingId && <label style={{ display: "flex", alignItems: "center", gap: 8, margin: "8px 0", fontSize: 12, color: "#444" }}><input type="checkbox" checked={replaceProductImages} onChange={(event) => setReplaceProductImages(event.target.checked)} />Replace current photos with the original quality photos selected below</label>}
-              <input id="product-images" type="file" multiple accept="image/png,image/jpeg,image/webp" required={!editingId || replaceProductImages} onChange={(event) => setImages(Array.from(event.target.files || []))} style={{ ...inputStyle, padding: 9 }} />
-              {images.length > 0 && <p style={{ color: "#555", fontSize: 11, marginTop: 6 }}>{images.length} photo(s) selected. {replaceProductImages ? "They will replace the current photos." : "They will be added to the existing product photos."}</p>}
+              {editingProduct?.product_images?.length ? <div style={{ display: "flex", gap: 9, overflowX: "auto", margin: "8px 0 12px" }}>{editingProduct.product_images.map((photo, index) => {
+                const kept = retainedProductImages.includes(photo.image_url);
+                return <div key={photo.image_url} style={{ position: "relative", flex: "0 0 66px", opacity: kept ? 1 : 0.42 }}>
+                  <Image src={photo.image_url} alt={`${editingProduct.name} ${index + 1}`} width={66} height={76} sizes="66px" quality={80} style={{ width: 66, height: 76, objectFit: "cover", borderRadius: 5 }} />
+                  <button type="button" aria-label={`${kept ? "Remove" : "Restore"} photo ${index + 1}`} onClick={() => setRetainedProductImages((current) => kept ? current.filter((url) => url !== photo.image_url) : [...current, photo.image_url])} style={{ position: "absolute", top: 2, right: 2, width: 22, height: 22, border: 0, borderRadius: "50%", background: kept ? "#111" : "#16804a", color: "#fff", cursor: "pointer", lineHeight: "22px", padding: 0 }}>{kept ? "×" : "+"}</button>
+                </div>;
+              })}</div> : null}
+              {editingId && <p style={{ color: "#666", fontSize: 11, margin: "6px 0" }}>Tap × to remove a photo; add replacements below. The product and its other details stay unchanged.</p>}
+              <input id="product-images" type="file" multiple accept="image/png,image/jpeg,image/webp" required={!editingId} onChange={(event) => setImages(Array.from(event.target.files || []))} style={{ ...inputStyle, padding: 9 }} />
+              {images.length > 0 && <p style={{ color: "#555", fontSize: 11, marginTop: 6 }}>{images.length} photo(s) selected. They will be added to the product photos you keep.</p>}
 
               <label htmlFor="product-video" style={{ ...labelStyle, marginTop: 18 }}>Product video (optional, MP4/WebM/MOV, up to 30 MB)</label>
               {editingProduct?.product_video_url && <div style={{ margin: "8px 0" }}>{!removeVideo && <video src={editingProduct.product_video_url} controls playsInline preload="metadata" style={{ display: "block", width: "min(100%, 360px)", maxHeight: 240, background: "#111", borderRadius: 6 }} />}<label style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 8, fontSize: 12 }}><input type="checkbox" checked={removeVideo} onChange={(event) => setRemoveVideo(event.target.checked)} />Remove current video</label></div>}

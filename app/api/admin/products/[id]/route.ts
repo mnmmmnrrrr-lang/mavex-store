@@ -206,24 +206,41 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     const images = form.getAll("images").filter((value): value is File => value instanceof File && value.size > 0);
     const addedImageCount = uploadedImagePaths.length + images.length;
     const replaceProductImages = form.get("replaceProductImages") === "true";
-    if (replaceProductImages && addedImageCount === 0) throw new Error("Choose original photos before replacing the current photos.");
-    if (addedImageCount > 8 || (!replaceProductImages && current.product_images.length + addedImageCount > 8)) throw new Error("A product can have up to 8 photos. Remove some before adding more.");
-    if (addedImageCount) {
-      const startingOrder = replaceProductImages ? 0 : current.product_images.length;
-      const uploadedImages = uploadedImagePaths.map((path, index) => ({ image_url: getProductImagePublicUrl(path), alt_text: name, sort_order: startingOrder + index }));
-      const legacyImages = await Promise.all(images.map(async (image, index) => {
-        const imageUrl = await saveProductImage(id, image);
-        uploadedLegacyImageUrls.push(imageUrl);
-        return { image_url: imageUrl, alt_text: name, sort_order: startingOrder + uploadedImagePaths.length + index };
-      }));
-      const newImages = [...uploadedImages, ...legacyImages];
-      nextProduct.product_images = replaceProductImages ? newImages : [...current.product_images, ...newImages];
+    let retainedImages = current.product_images;
+    if (form.has("retainedProductImages")) {
+      let requestedRetained: unknown;
+      try { requestedRetained = JSON.parse(String(form.get("retainedProductImages") || "[]")); }
+      catch { throw new Error("The selected product photos are invalid. Refresh and try again."); }
+      if (!Array.isArray(requestedRetained) || requestedRetained.some((url) => typeof url !== "string") || new Set(requestedRetained).size !== requestedRetained.length) {
+        throw new Error("The selected product photos are invalid. Refresh and try again.");
+      }
+      const requestedSet = new Set(requestedRetained as string[]);
+      if ((requestedRetained as string[]).some((url) => !current.product_images.some((photo) => photo.image_url === url))) {
+        throw new Error("A selected photo does not belong to this product.");
+      }
+      retainedImages = current.product_images.filter((photo) => requestedSet.has(photo.image_url));
+    } else if (replaceProductImages) {
+      retainedImages = [];
     }
+    if (replaceProductImages && addedImageCount === 0) throw new Error("Choose original photos before replacing the current photos.");
+    if (retainedImages.length + addedImageCount === 0) throw new Error("Keep or add at least one product photo.");
+    if (retainedImages.length + addedImageCount > 8) throw new Error("A product can have up to 8 photos. Remove some before adding more.");
+
+    const startingOrder = retainedImages.length;
+    const uploadedImages = uploadedImagePaths.map((path, index) => ({ image_url: getProductImagePublicUrl(path), alt_text: name, sort_order: startingOrder + index }));
+    const legacyImages = await Promise.all(images.map(async (image, index) => {
+      const imageUrl = await saveProductImage(id, image);
+      uploadedLegacyImageUrls.push(imageUrl);
+      return { image_url: imageUrl, alt_text: name, sort_order: startingOrder + uploadedImagePaths.length + index };
+    }));
+    nextProduct.product_images = [...retainedImages, ...uploadedImages, ...legacyImages]
+      .map((photo, index) => ({ ...photo, sort_order: index }));
 
     await saveCatalogProduct(nextProduct);
     revalidatePath("/", "page");
     revalidatePath("/product/[id]", "page");
-    const oldImages = replaceProductImages ? current.product_images.map((image) => image.image_url) : [];
+    const nextImageUrls = new Set(nextProduct.product_images.map((image) => image.image_url));
+    const oldImages = current.product_images.filter((image) => !nextImageUrls.has(image.image_url)).map((image) => image.image_url);
     const oldVideo = current.product_video_url && current.product_video_url !== nextProduct.product_video_url
       ? current.product_video_url
       : null;
