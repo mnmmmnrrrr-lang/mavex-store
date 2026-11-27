@@ -143,12 +143,81 @@ export default function StorefrontManager({ config, products, onSaved }: { confi
 
   return (
     <section className="storefront-manager">
+      <style>{`
+        @media (max-width: 640px) {
+          .storefront-manager .site-pages-panel {
+            width: 100%;
+            max-width: 100%;
+            min-width: 0;
+            overflow-x: hidden;
+            box-sizing: border-box;
+            padding: 12px !important;
+          }
+          .storefront-manager .site-page-row {
+            width: 100%;
+            max-width: 100%;
+            min-width: 0;
+            box-sizing: border-box;
+            overflow: hidden;
+            grid-template-columns: 22px minmax(0, 1fr) auto 28px 28px !important;
+            gap: 4px !important;
+            padding: 7px 6px !important;
+          }
+          .storefront-manager .site-page-index {
+            grid-column: 1;
+            grid-row: 1 / 3;
+          }
+          .storefront-manager .site-page-title {
+            grid-column: 2;
+            grid-row: 1;
+            min-width: 0;
+            flex: 1 1 auto;
+            overflow: hidden;
+          }
+          .storefront-manager .site-page-path {
+            grid-column: 2;
+            grid-row: 2;
+            display: block;
+            width: 100%;
+            min-width: 0;
+            flex: 1 1 auto;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+          }
+          .storefront-manager .site-page-toggle {
+            grid-column: 3;
+            grid-row: 1 / 3;
+            gap: 4px !important;
+            white-space: nowrap;
+            flex-shrink: 0;
+          }
+          .storefront-manager .site-page-up {
+            grid-column: 4;
+            grid-row: 1 / 3;
+            min-width: 0;
+            width: 28px;
+            height: 28px;
+            padding: 0;
+            flex-shrink: 0;
+          }
+          .storefront-manager .site-page-down {
+            grid-column: 5;
+            grid-row: 1 / 3;
+            min-width: 0;
+            width: 28px;
+            height: 28px;
+            padding: 0;
+            flex-shrink: 0;
+          }
+        }
+      `}</style>
       <header className="storefront-manager-header">
         <div><p className="storefront-manager-kicker">SITE PAGES &amp; FLOW MANAGER</p><h1>All pages &amp; customer flow</h1><p>Turn storefront routes on or off, choose where collection cards lead, and organize pages without editing code. Product pages remain available in the Products manager.</p></div>
         <button className="storefront-save" type="button" disabled={busy} onClick={() => void save()}>{busy ? "SAVING…" : "SAVE STOREFRONT"}</button>
       </header>
 
-      <section aria-labelledby="global-site-pages" style={{ background: "#fff", border: "1px solid #eee", padding: "18px 20px", marginBottom: 18 }}>
+      <section className="site-pages-panel" aria-labelledby="global-site-pages" style={{ background: "#fff", border: "1px solid #eee", padding: "18px 20px", marginBottom: 18 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", gap: 12, flexWrap: "wrap" }}>
           <div><h2 id="global-site-pages" style={{ fontSize: 18, margin: 0 }}>Site pages &amp; navigation order</h2><p style={{ color: "#666", fontSize: 12, margin: "6px 0 0" }}>Switch routes or homepage sections on/off. Disabled routes redirect to an enabled destination; arrows also order the live home menu.</p></div>
           <span style={{ fontSize: 10, color: "#777" }}>Keep Home or Shop enabled as a safe destination.</span>
@@ -156,13 +225,13 @@ export default function StorefrontManager({ config, products, onSaved }: { confi
         <div style={{ display: "grid", gap: 6, marginTop: 13 }}>
           {pageRoutes.map((state, index) => {
             const definition = SITE_PAGE_DEFINITIONS.find((page) => page.id === state.id)!;
-            return <div key={state.id} style={{ display: "grid", gridTemplateColumns: "32px minmax(120px, 1fr) minmax(170px, 1.2fr) auto 34px 34px", gap: 8, alignItems: "center", border: "1px solid #eee", padding: "7px 9px" }}>
-              <strong style={{ color: "#777", fontSize: 11, textAlign: "center" }}>{index + 1}</strong>
-              <div><strong style={{ fontSize: 12 }}>{definition.label}</strong><span style={{ display: "block", color: "#888", fontSize: 10 }}>{definition.type === "section" ? "Homepage section" : "Route template"}</span></div>
-              <code style={{ overflow: "hidden", textOverflow: "ellipsis", color: "#777", fontSize: 10, whiteSpace: "nowrap" }}>{definition.path}</code>
-              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, fontWeight: 800, color: state.enabled ? "#20834b" : "#888" }}><input type="checkbox" checked={state.enabled} onChange={(event) => updatePage(state.id, { enabled: event.target.checked })} />{state.enabled ? "ON" : "OFF"}</label>
-              <button type="button" title="Move page up" aria-label={`Move ${definition.label} up`} disabled={index === 0 || busy} onClick={() => movePage(index, -1)}>↑</button>
-              <button type="button" title="Move page down" aria-label={`Move ${definition.label} down`} disabled={index === pageRoutes.length - 1 || busy} onClick={() => movePage(index, 1)}>↓</button>
+            return <div className="site-page-row" key={state.id} style={{ display: "grid", gridTemplateColumns: "32px minmax(120px, 1fr) minmax(170px, 1.2fr) auto 34px 34px", gap: 8, alignItems: "center", border: "1px solid #eee", padding: "7px 9px" }}>
+              <strong className="site-page-index" style={{ color: "#777", fontSize: 11, textAlign: "center" }}>{index + 1}</strong>
+              <div className="site-page-title"><strong style={{ fontSize: 12 }}>{definition.label}</strong><span style={{ display: "block", color: "#888", fontSize: 10 }}>{definition.type === "section" ? "Homepage section" : "Route template"}</span></div>
+              <code className="site-page-path" style={{ overflow: "hidden", textOverflow: "ellipsis", color: "#777", fontSize: 10, whiteSpace: "nowrap" }}>{definition.path}</code>
+              <label className="site-page-toggle" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, fontWeight: 800, color: state.enabled ? "#20834b" : "#888" }}><input type="checkbox" checked={state.enabled} onChange={(event) => updatePage(state.id, { enabled: event.target.checked })} />{state.enabled ? "ON" : "OFF"}</label>
+              <button className="site-page-up" type="button" title="Move page up" aria-label={`Move ${definition.label} up`} disabled={index === 0 || busy} onClick={() => movePage(index, -1)}>↑</button>
+              <button className="site-page-down" type="button" title="Move page down" aria-label={`Move ${definition.label} down`} disabled={index === pageRoutes.length - 1 || busy} onClick={() => movePage(index, 1)}>↓</button>
             </div>;
           })}
         </div>
