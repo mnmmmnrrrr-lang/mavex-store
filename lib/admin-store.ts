@@ -24,6 +24,7 @@ export type CatalogProduct = {
     image_url: string;
     alt_text: string | null;
     sort_order: number | null;
+    color?: string | null;
   }[];
   product_variants: {
     id: string;
@@ -34,6 +35,38 @@ export type CatalogProduct = {
     is_active: boolean | null;
   }[];
 };
+
+function parseVariantImageColor(value: unknown, variantColors: Map<string, string>) {
+  if (value === "" || value === null || value === undefined) return null;
+  if (typeof value !== "string") throw new Error("Choose a valid color for every product photo.");
+  const name = value.trim();
+  if (!name || name.length > 40) throw new Error("Choose a valid color for every product photo.");
+  const canonical = variantColors.get(name.toLocaleLowerCase());
+  if (!canonical) throw new Error(`The photo color “${name}” must match a product color variant.`);
+  return canonical;
+}
+
+export function parseUploadedImageColors(value: FormDataEntryValue | null, imageCount: number, variants: { color: string }[]) {
+  if (value === null || value === "") return Array.from({ length: imageCount }, () => null as string | null);
+  let parsed: unknown;
+  try { parsed = JSON.parse(String(value)); }
+  catch { throw new Error("The product photo color assignments are invalid."); }
+  if (!Array.isArray(parsed) || parsed.length !== imageCount) throw new Error("Choose a color for each uploaded product photo.");
+  const variantColors = new Map(variants.map((variant) => [variant.color.toLocaleLowerCase(), variant.color]));
+  return parsed.map((color) => parseVariantImageColor(color, variantColors));
+}
+
+export function parseRetainedImageColors(value: FormDataEntryValue | null, retainedUrls: string[], variants: { color: string }[]) {
+  if (value === null || value === "") return null;
+  let parsed: unknown;
+  try { parsed = JSON.parse(String(value)); }
+  catch { throw new Error("The retained photo color assignments are invalid."); }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("The retained photo color assignments are invalid.");
+  const assignments = parsed as Record<string, unknown>;
+  if (Object.keys(assignments).some((url) => !retainedUrls.includes(url))) throw new Error("A photo color assignment does not match this product.");
+  const variantColors = new Map(variants.map((variant) => [variant.color.toLocaleLowerCase(), variant.color]));
+  return Object.fromEntries(retainedUrls.map((url) => [url, parseVariantImageColor(assignments[url], variantColors)]));
+}
 
 export function parseColorProductLinks(value: FormDataEntryValue | null) {
   if (value === null || value === "") return [] as { color: string; product_id: string }[];

@@ -5,6 +5,7 @@ import { ADMIN_COOKIE, isAdminSessionValid } from "../../../../lib/admin-auth";
 import {
   CatalogProduct,
   makeSlug,
+  parseUploadedImageColors,
   parseColorProductLinks,
 } from "../../../../lib/admin-store";
 import { getCatalogProducts } from "../../../../lib/catalog-server";
@@ -203,16 +204,17 @@ export async function POST(request: NextRequest) {
     if (uploadedImagePaths.length + images.length === 0 || uploadedImagePaths.length + images.length > 8) {
       throw new Error("Choose 1 to 8 product photos.");
     }
+    const imageColors = parseUploadedImageColors(form.get("uploadedImageColors"), uploadedImagePaths.length + images.length, fields.variants);
 
     const id = makeSlug(fields.name) + "-" + randomBytes(3).toString("hex");
     await validateColorProductLinks(id, { name: fields.name, product_type: fields.productType }, fields.colorProductLinks);
     const legacyImages = await Promise.all(images.map(async (image, index) => {
       const imageUrl = await saveProductImage(id, image);
       uploadedLegacyImageUrls.push(imageUrl);
-      return { image_url: imageUrl, alt_text: fields.name, sort_order: uploadedImagePaths.length + index };
+      return { image_url: imageUrl, alt_text: fields.name, sort_order: uploadedImagePaths.length + index, color: imageColors[uploadedImagePaths.length + index] };
     }));
     const productImages = [
-      ...uploadedImagePaths.map((path, index) => ({ image_url: getProductImagePublicUrl(path), alt_text: fields.name, sort_order: index })),
+      ...uploadedImagePaths.map((path, index) => ({ image_url: getProductImagePublicUrl(path), alt_text: fields.name, sort_order: index, color: imageColors[index] })),
       ...legacyImages,
     ];
     const product: CatalogProduct = {

@@ -34,6 +34,7 @@ export type Product = {
     image_url: string;
     alt_text: string | null;
     sort_order: number | null;
+    color?: string | null;
   }[];
   product_variants: Variant[];
 };
@@ -143,24 +144,6 @@ function ProductContent({ initialProduct, initialRelatedProducts }: ProductClien
     finally { setCommentBusy(false); }
   }
 
-  const mediaCount = (product?.product_images.length ?? 0) + (product?.product_video_url ? 1 : 0);
-
-  // Keyboard arrows to flip between images
-  useEffect(() => {
-    if (mediaCount < 2) return;
-
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "ArrowRight") {
-        setImageIndex((c) => (c + 1) % mediaCount);
-      } else if (e.key === "ArrowLeft") {
-        setImageIndex((c) => (c - 1 + mediaCount) % mediaCount);
-      }
-    }
-
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [mediaCount]);
-
   const variants = product.product_variants;
   const measurements = product.size_guide?.length ? product.size_guide : sizeGuide;
   const pantsGuide = /pant|jogger|trouser/i.test(product.name);
@@ -204,11 +187,30 @@ function ProductContent({ initialProduct, initialRelatedProducts }: ProductClien
   );
   const maxQty = Math.max(1, Math.min(stock, 10));
 
-  const images = product.product_images.map((img) => img.image_url);
+  const hasColorAssignedImages = product.product_images.some((image) => Boolean(image.color?.trim()));
+  const colorImages = hasColorAssignedImages
+    ? product.product_images.filter((image) => !image.color?.trim() || image.color.trim().toLocaleLowerCase() === color.trim().toLocaleLowerCase())
+    : product.product_images;
+  const images = colorImages.map((img) => img.image_url);
   const galleryMedia: ({ type: "image"; src: string } | { type: "video"; src: string })[] = [
     ...images.map((src) => ({ type: "image" as const, src })),
     ...(product.product_video_url ? [{ type: "video" as const, src: product.product_video_url }] : []),
   ];
+  const mediaCount = galleryMedia.length;
+
+  // Keyboard arrows follow the selected color's filtered photo gallery.
+  useEffect(() => {
+    if (mediaCount < 2) return;
+
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "ArrowRight") setImageIndex((current) => (current + 1) % mediaCount);
+      else if (e.key === "ArrowLeft") setImageIndex((current) => (current - 1 + mediaCount) % mediaCount);
+    }
+
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [mediaCount]);
+
   const activeMedia = galleryMedia[imageIndex];
 
   const currentPrice = Number(selectedVariant?.price_override ?? product.price);

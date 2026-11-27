@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { revalidatePath, revalidateTag } from "next/cache";
 import { ADMIN_COOKIE, isAdminSessionValid } from "../../../../../lib/admin-auth";
-import { CatalogProduct, parseColorProductLinks } from "../../../../../lib/admin-store";
+import { CatalogProduct, parseRetainedImageColors, parseUploadedImageColors, parseColorProductLinks } from "../../../../../lib/admin-store";
 import { getCatalogProduct, getCatalogProducts } from "../../../../../lib/catalog-server";
 import { getStorefrontConfig } from "../../../../../lib/storefront-server";
 import { validateProductPlacement } from "../../../../../lib/storefront-config";
@@ -238,11 +238,16 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       if (!Array.isArray(requestedRetained) || requestedRetained.some((url) => typeof url !== "string") || new Set(requestedRetained).size !== requestedRetained.length) {
         throw new Error("The selected product photos are invalid. Refresh and try again.");
       }
-      const requestedSet = new Set(requestedRetained as string[]);
       if ((requestedRetained as string[]).some((url) => !current.product_images.some((photo) => photo.image_url === url))) {
         throw new Error("A selected photo does not belong to this product.");
       }
-      retainedImages = current.product_images.filter((photo) => requestedSet.has(photo.image_url));
+      const requestedUrls = requestedRetained as string[];
+      const colorAssignments = parseRetainedImageColors(form.get("retainedProductImageColors"), requestedUrls, variants);
+      const currentByUrl = new Map(current.product_images.map((photo) => [photo.image_url, photo]));
+      retainedImages = requestedUrls.map((url) => {
+        const photo = currentByUrl.get(url)!;
+        return colorAssignments ? { ...photo, color: colorAssignments[url] } : photo;
+      });
     } else if (replaceProductImages) {
       retainedImages = [];
     }
@@ -250,12 +255,13 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     if (retainedImages.length + addedImageCount === 0) throw new Error("Keep or add at least one product photo.");
     if (retainedImages.length + addedImageCount > 8) throw new Error("A product can have up to 8 photos. Remove some before adding more.");
 
+    const imageColors = parseUploadedImageColors(form.get("uploadedImageColors"), addedImageCount, variants);
     const startingOrder = retainedImages.length;
-    const uploadedImages = uploadedImagePaths.map((path, index) => ({ image_url: getProductImagePublicUrl(path), alt_text: name, sort_order: startingOrder + index }));
+    const uploadedImages = uploadedImagePaths.map((path, index) => ({ image_url: getProductImagePublicUrl(path), alt_text: name, sort_order: startingOrder + index, color: imageColors[index] }));
     const legacyImages = await Promise.all(images.map(async (image, index) => {
       const imageUrl = await saveProductImage(id, image);
       uploadedLegacyImageUrls.push(imageUrl);
-      return { image_url: imageUrl, alt_text: name, sort_order: startingOrder + uploadedImagePaths.length + index };
+      return { image_url: imageUrl, alt_text: name, sort_order: startingOrder + uploadedImagePaths.length + index, color: imageColors[uploadedImagePaths.length + index] };
     }));
     nextProduct.product_images = [...retainedImages, ...uploadedImages, ...legacyImages]
       .map((photo, index) => ({ ...photo, sort_order: index }));
@@ -298,9 +304,20 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     if (imageUrls.length) {
       await deleteSupersededMedia(id, imageUrls, null);
     }
+    // Compact storefront positions after the tombstone is written. The delete stays
+    // successful even if order repair has a transient database failure.
+    try {
+      const remainingProducts = await getCatalogProducts(true);
+      await Promise.all(remainingProducts.map((product, sort_order) =>
+        saveCatalogProduct({ ...product, sort_order }),
+      ));
+    } catch (orderError) {
+      console.error("Product was deleted, but storefront order compaction failed:", orderError);
+    }
     revalidateTag(STOREFRONT_CACHE_TAG, { expire: 0 });
     revalidatePath("/", "layout");
     revalidatePath("/", "page");
+    revalidatePath("/product/[id]", "page");
     revalidatePath("/shop", "page");
     revalidatePath("/collection/[collectionSlug]", "page");
     revalidatePath("/collection/[collectionSlug]/[subCategorySlug]", "page");

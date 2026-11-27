@@ -40,7 +40,7 @@ type AdminProduct = {
   size_guide_length_label?: string;
   product_video_url?: string | null;
   color_product_links?: ColorProductLink[];
-  product_images: { image_url: string; alt_text: string | null; sort_order: number | null }[];
+  product_images: { image_url: string; alt_text: string | null; sort_order: number | null; color?: string | null }[];
   product_variants: { id: string; color: string; size: string; stock_quantity: number; price_override: number | null; is_active: boolean | null }[];
 };
 type OperationsData = {
@@ -225,6 +225,7 @@ export default function AdminPage() {
   const [price, setPrice] = useState("600");
   const [compareAtPrice, setCompareAtPrice] = useState("1000");
   const [variants, setVariants] = useState<VariantDraft[]>(defaultVariants);
+  const [newColorName, setNewColorName] = useState("");
   const [colorProductLinks, setColorProductLinks] = useState<ColorProductLinkDraft[]>([]);
   const [sizeMeasurements, setSizeMeasurements] = useState(standardMeasurements);
   const [sizeGuideTitle, setSizeGuideTitle] = useState("HOODIE");
@@ -232,7 +233,9 @@ export default function AdminPage() {
   const [sizeGuideWidthLabel, setSizeGuideWidthLabel] = useState("WIDTH");
   const [sizeGuideLengthLabel, setSizeGuideLengthLabel] = useState("LENGTH");
   const [images, setImages] = useState<File[]>([]);
+  const [newImageColors, setNewImageColors] = useState<string[]>([]);
   const [retainedProductImages, setRetainedProductImages] = useState<string[]>([]);
+  const [retainedImageColors, setRetainedImageColors] = useState<Record<string, string>>({});
   const [video, setVideo] = useState<File | null>(null);
   const [removeVideo, setRemoveVideo] = useState(false);
   const [activeTab, setActiveTab] = useState<"storefront" | "products" | "orders" | "returns" | "comments">("storefront");
@@ -336,6 +339,7 @@ export default function AdminPage() {
     setPrice("600");
     setCompareAtPrice("1000");
     setVariants(defaultVariants());
+    setNewColorName("");
     setColorProductLinks([]);
     setSizeMeasurements(standardMeasurements);
     setSizeGuideTitle("HOODIE");
@@ -347,7 +351,9 @@ export default function AdminPage() {
     setSubcategoryId(firstCollection?.subcategories[0]?.id || "");
     setIsFeatured(false);
     setImages([]);
+    setNewImageColors([]);
     setRetainedProductImages([]);
+    setRetainedImageColors({});
     setVideo(null);
     setRemoveVideo(false);
     const fileInput = document.querySelector<HTMLInputElement>("#product-images");
@@ -386,6 +392,7 @@ export default function AdminPage() {
       price_override: variant.price_override === null ? "" : String(variant.price_override),
       is_active: variant.is_active !== false,
     })));
+    setNewColorName("");
     const guide = { ...standardMeasurements };
     for (const item of product.size_guide || []) {
       guide[item.size] = { label: item.label || item.size, width: String(item.width), length: String(item.length) };
@@ -393,6 +400,8 @@ export default function AdminPage() {
     setSizeMeasurements(guide);
     setImages([]);
     setRetainedProductImages((product.product_images || []).map((photo) => photo.image_url));
+    setRetainedImageColors(Object.fromEntries((product.product_images || []).map((photo) => [photo.image_url, photo.color || ""])));
+    setNewImageColors([]);
     setVideo(null);
     setRemoveVideo(false);
     setMessage("");
@@ -412,17 +421,73 @@ export default function AdminPage() {
   }
 
   function addVariant() {
-    const used = new Set(variants.map((variant) => variant.size));
-    const size = sizes.find((item) => !used.has(item)) || "S";
+    const colors = [...new Set(variants.map((variant) => variant.color.trim()).filter(Boolean))];
+    const nextVariant = colors.flatMap((color) => sizes
+      .filter((size) => !variants.some((variant) => variant.color.trim().toLowerCase() === color.toLowerCase() && variant.size === size))
+      .map((size) => ({ color, size })))[0];
+    if (!nextVariant) {
+      setMessage("Every current color already has all available sizes. Use ADD COLOR to add another color.");
+      return;
+    }
     setVariants((current) => [...current, {
       draftKey: newDraftKey("variant"),
       id: "",
-      color: current[0]?.color || "Black",
-      size,
+      color: nextVariant.color,
+      size: nextVariant.size,
       stock_quantity: "10",
       price_override: "",
       is_active: true,
     }]);
+  }
+
+  function addColorVariants() {
+    const nextColor = newColorName.trim();
+    if (!nextColor || nextColor.length > 40) {
+      setMessage("Enter a color name up to 40 characters.");
+      return;
+    }
+    const productSizes = [...new Set(variants.map((variant) => variant.size))];
+    const missingSizes = productSizes.filter((size) => !variants.some((variant) => variant.color.trim().toLowerCase() === nextColor.toLowerCase() && variant.size === size));
+    if (!missingSizes.length) {
+      setMessage(`${nextColor} already has all current sizes.`);
+      return;
+    }
+    if (variants.length + missingSizes.length > 60) {
+      setMessage("This product can have up to 60 size and color variants.");
+      return;
+    }
+    setVariants((current) => [...current, ...missingSizes.map((size) => ({
+      draftKey: newDraftKey("variant"), id: "", color: nextColor, size,
+      stock_quantity: "10", price_override: "", is_active: true,
+    }))]);
+    setNewColorName("");
+    setMessage("");
+  }
+
+  function moveRetainedImage(imageUrl: string, direction: -1 | 1) {
+    setRetainedProductImages((current) => {
+      const index = current.indexOf(imageUrl);
+      const target = index + direction;
+      if (index < 0 || target < 0 || target >= current.length) return current;
+      const next = [...current];
+      [next[index], next[target]] = [next[target], next[index]];
+      return next;
+    });
+  }
+
+  function moveNewImage(index: number, direction: -1 | 1) {
+    const target = index + direction;
+    if (target < 0 || target >= images.length) return;
+    setImages((current) => {
+      const next = [...current];
+      [next[index], next[target]] = [next[target], next[index]];
+      return next;
+    });
+    setNewImageColors((current) => {
+      const next = [...current];
+      [next[index], next[target]] = [next[target], next[index]];
+      return next;
+    });
   }
 
   async function saveProduct(event: FormEvent<HTMLFormElement>) {
@@ -491,6 +556,8 @@ export default function AdminPage() {
     }))));
     form.set("removeVideo", removeVideo ? "true" : "false");
     form.set("retainedProductImages", JSON.stringify(retainedProductImages));
+    form.set("retainedProductImageColors", JSON.stringify(Object.fromEntries(retainedProductImages.map((url) => [url, retainedImageColors[url] || ""]))));
+    form.set("uploadedImageColors", JSON.stringify(images.map((_, index) => newImageColors[index] || "")));
 
     const uploadedMedia: UploadedProductMedia[] = [];
     try {
@@ -541,7 +608,7 @@ export default function AdminPage() {
       const response = await fetch("/api/admin/products/" + encodeURIComponent(product.id), { method: "DELETE" });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Could not delete the product.");
-      setProducts((current) => current.filter((item) => item.id !== product.id));
+      setProducts((current) => sortAdminProducts(current.filter((item) => item.id !== product.id)));
       if (editingId === product.id) resetForm();
       setMessage("Product deleted from the store.");
     } catch (error) {
@@ -714,6 +781,7 @@ export default function AdminPage() {
 
   const labelStyle = { display: "block", marginBottom: 7, fontSize: 12, fontWeight: 700 };
   const productSizes = [...new Set(variants.map((variant) => variant.size))];
+  const productColors = [...new Set(variants.map((variant) => variant.color.trim()).filter(Boolean))];
   const selectedCollection = storefrontConfig.collections.find((item) => item.id === collectionId) || storefrontConfig.collections[0];
 
   return (
@@ -741,6 +809,22 @@ export default function AdminPage() {
           <button type="button" onClick={logout} style={{ border: "1px solid #eee", borderRadius: 8, padding: "0 15px", background: "#fff", cursor: "pointer" }}>LOG OUT</button>
         </nav>
         {activeTab === "products" ? (
+        <>
+        <section aria-labelledby="homepage-store-order" style={{ maxWidth: 1180, margin: "0 auto 20px", background: "#fff", padding: "18px 22px", borderRadius: 9, boxShadow: "0 8px 30px #0000000d" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <div><p style={{ color: "#f890c8", letterSpacing: 2, fontSize: 11, fontWeight: 800, margin: 0 }}>STOREFRONT DISPLAY</p><h2 id="homepage-store-order" style={{ margin: "6px 0 3px", fontSize: 20 }}>Homepage &amp; Store Order</h2><p style={{ color: "#777", fontSize: 12, margin: 0 }}>Products at the top appear first across the store. Save changes with the arrows.</p></div>
+            <span role="status" style={{ color: orderSaving ? "#666" : "#20834b", fontSize: 12, fontWeight: 700 }}>{orderSaving ? "SAVING ORDER..." : "POSITION 1 IS FIRST"}</span>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 8, marginTop: 14 }}>
+            {products.map((product, index) => <div key={product.id} style={{ display: "grid", gridTemplateColumns: "30px 42px minmax(0,1fr) 30px", alignItems: "center", gap: 8, border: "1px solid #eee", padding: 7 }}>
+              <strong style={{ textAlign: "center", fontSize: 12 }}>{index + 1}</strong>
+              {product.product_images[0]?.image_url ? <Image src={product.product_images[0].image_url} alt="" width={42} height={42} sizes="42px" quality={80} style={{ width: 42, height: 42, objectFit: "cover" }} /> : <span style={{ width: 42, height: 42, background: "#f3f3f3" }} />}
+              <span title={product.name} style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 11, fontWeight: 700 }}>{product.name}</span>
+              <span style={{ display: "grid", gap: 3 }}><button type="button" aria-label={`Move ${product.name} up`} onClick={() => void moveProduct(product.id, -1)} disabled={index === 0 || orderSaving} style={{ border: "1px solid #ddd", background: "#fff", cursor: "pointer", opacity: index === 0 || orderSaving ? .4 : 1 }}>↑</button><button type="button" aria-label={`Move ${product.name} down`} onClick={() => void moveProduct(product.id, 1)} disabled={index === products.length - 1 || orderSaving} style={{ border: "1px solid #ddd", background: "#fff", cursor: "pointer", opacity: index === products.length - 1 || orderSaving ? .4 : 1 }}>↓</button></span>
+            </div>)}
+            {!products.length && <p style={{ color: "#777", fontSize: 12 }}>Products you add will appear here for ordering.</p>}
+          </div>
+        </section>
         <div className="admin-products-layout" style={{ maxWidth: 1180, margin: "0 auto", display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(360px, 1fr)", gap: 24, alignItems: "start" }}>
           <section style={{ background: "#fff", padding: 24, borderRadius: 9, boxShadow: "0 8px 30px #0000000d" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 22 }}>
@@ -786,10 +870,15 @@ export default function AdminPage() {
               </div>
 
               <div style={{ marginTop: 18 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                   <p style={labelStyle}>Color and size variants</p>
-                  <button type="button" onClick={addVariant} style={{ border: "1px solid #ddd", background: "#fff", padding: "6px 10px", cursor: "pointer", borderRadius: 4 }}>+ ADD SIZE</button>
+                  <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                    <AdminColorInput label="New color variant name" value={newColorName} onChange={setNewColorName} placeholder="New color" />
+                    <button type="button" onClick={addColorVariants} style={{ border: "1px solid #ddd", background: "#fff", padding: "7px 9px", cursor: "pointer", borderRadius: 4, whiteSpace: "nowrap" }}>+ ADD COLOR</button>
+                    <button type="button" onClick={addVariant} style={{ border: "1px solid #ddd", background: "#fff", padding: "7px 9px", cursor: "pointer", borderRadius: 4, whiteSpace: "nowrap" }}>+ ADD SIZE</button>
+                  </div>
                 </div>
+                <p style={{ margin: "0 0 8px", fontSize: 11, color: "#777" }}>Adding a color creates matching size rows; set stock and price for each size below.</p>
                 <div style={{ display: "grid", gap: 8 }}>
                   {variants.map((variant, index) => {
                     const rowKey = variant.id || variant.draftKey;
@@ -851,16 +940,29 @@ export default function AdminPage() {
 
               <label htmlFor="product-images" style={{ ...labelStyle, marginTop: 18 }}>Product photos (main/back images, up to 8 images, 5 MB each)</label>
               <small style={{ display: "block", color: "#777", fontSize: 10, marginTop: 5 }}>Recommended size: 1200 x 1200 px (1:1 Square)</small>
-              {editingProduct?.product_images?.length ? <div style={{ display: "flex", gap: 9, overflowX: "auto", margin: "8px 0 12px" }}>{editingProduct.product_images.map((photo, index) => {
-                const kept = retainedProductImages.includes(photo.image_url);
-                return <div key={photo.image_url} style={{ position: "relative", flex: "0 0 66px", opacity: kept ? 1 : 0.42 }}>
-                  <Image src={photo.image_url} alt={`${editingProduct.name} ${index + 1}`} width={66} height={76} sizes="66px" quality={80} style={{ width: 66, height: 76, objectFit: "cover", borderRadius: 5 }} />
-                  <button type="button" aria-label={`${kept ? "Remove" : "Restore"} photo ${index + 1}`} onClick={() => setRetainedProductImages((current) => kept ? current.filter((url) => url !== photo.image_url) : [...current, photo.image_url])} style={{ position: "absolute", top: 2, right: 2, width: 22, height: 22, border: 0, borderRadius: "50%", background: kept ? "#111" : "#16804a", color: "#fff", cursor: "pointer", lineHeight: "22px", padding: 0 }}>{kept ? "×" : "+"}</button>
+              {editingProduct?.product_images?.length ? <div style={{ display: "grid", gap: 8, margin: "8px 0 12px" }}>{retainedProductImages.map((url, index) => {
+                const photo = editingProduct.product_images.find((item) => item.image_url === url);
+                if (!photo) return null;
+                return <div key={url} style={{ display: "grid", gridTemplateColumns: "62px minmax(100px,1fr) minmax(130px,1fr) auto", alignItems: "center", gap: 8, border: "1px solid #eee", padding: 7 }}>
+                  <Image src={photo.image_url} alt={`${editingProduct.name} photo ${index + 1}`} width={62} height={62} sizes="62px" quality={80} style={{ width: 62, height: 62, objectFit: "cover" }} />
+                  <span style={{ fontSize: 11, fontWeight: 700 }}>Photo {index + 1}</span>
+                  <select aria-label={`Color for photo ${index + 1}`} value={retainedImageColors[url] || ""} onChange={(event) => setRetainedImageColors((current) => ({ ...current, [url]: event.target.value }))} style={{ ...inputStyle, padding: "7px 8px", fontSize: 11 }}><option value="">All colors / shared</option>{productColors.map((item) => <option key={item} value={item}>{item}</option>)}</select>
+                  <span style={{ display: "flex", gap: 3 }}><button type="button" title="Move photo up" aria-label={`Move photo ${index + 1} up`} onClick={() => moveRetainedImage(url, -1)} disabled={index === 0}>↑</button><button type="button" title="Move photo down" aria-label={`Move photo ${index + 1} down`} onClick={() => moveRetainedImage(url, 1)} disabled={index === retainedProductImages.length - 1}>↓</button><button type="button" aria-label={`Remove photo ${index + 1}`} title="Remove photo" onClick={() => setRetainedProductImages((current) => current.filter((item) => item !== url))} style={{ color: "#b42318" }}>×</button></span>
                 </div>;
               })}</div> : null}
-              {editingId && <p style={{ color: "#666", fontSize: 11, margin: "6px 0" }}>Tap × to remove a photo; add replacements below. The product and its other details stay unchanged.</p>}
-              <input id="product-images" type="file" multiple accept="image/png,image/jpeg,image/webp" required={!editingId} onChange={(event) => setImages(Array.from(event.target.files || []))} style={{ ...inputStyle, padding: 9 }} />
-              {images.length > 0 && <p style={{ color: "#555", fontSize: 11, marginTop: 6 }}>{images.length} photo(s) selected. They will be added to the product photos you keep.</p>}
+              {editingId && editingProduct?.product_images.some((photo) => !retainedProductImages.includes(photo.image_url)) && <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>{editingProduct.product_images.filter((photo) => !retainedProductImages.includes(photo.image_url)).map((photo) => <button key={photo.image_url} type="button" onClick={() => setRetainedProductImages((current) => [...current, photo.image_url])} style={{ border: "1px solid #ddd", background: "#fff", padding: "5px 8px", cursor: "pointer", fontSize: 10 }}>RESTORE PHOTO</button>)}</div>}
+              {editingId && <p style={{ color: "#666", fontSize: 11, margin: "6px 0" }}>Reorder photos, assign each to a color, or leave it shared across all colors. Remove or restore photos without deleting the product.</p>}
+              <input id="product-images" type="file" multiple accept="image/png,image/jpeg,image/webp" onChange={(event) => {
+                const added = Array.from(event.target.files || []);
+                if (added.length) { setImages((current) => [...current, ...added]); setNewImageColors((current) => [...current, ...added.map(() => "")]); }
+                event.currentTarget.value = "";
+              }} style={{ ...inputStyle, padding: 9 }} />
+              {images.map((file, index) => <div key={`${file.name}-${file.lastModified}-${index}`} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(130px,.8fr) auto", gap: 8, alignItems: "center", borderBottom: "1px solid #eee", padding: "8px 2px" }}>
+                <span title={file.name} style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 11 }}>{file.name}</span>
+                <select aria-label={`Color for new photo ${index + 1}`} value={newImageColors[index] || ""} onChange={(event) => setNewImageColors((current) => current.map((colorName, itemIndex) => itemIndex === index ? event.target.value : colorName))} style={{ ...inputStyle, padding: "7px 8px", fontSize: 11 }}><option value="">All colors / shared</option>{productColors.map((item) => <option key={item} value={item}>{item}</option>)}</select>
+                <span style={{ display: "flex", gap: 3 }}><button type="button" aria-label={`Move new photo ${index + 1} up`} onClick={() => moveNewImage(index, -1)} disabled={index === 0}>↑</button><button type="button" aria-label={`Move new photo ${index + 1} down`} onClick={() => moveNewImage(index, 1)} disabled={index === images.length - 1}>↓</button><button type="button" aria-label={`Remove new photo ${index + 1}`} onClick={() => { setImages((current) => current.filter((_, itemIndex) => itemIndex !== index)); setNewImageColors((current) => current.filter((_, itemIndex) => itemIndex !== index)); }} style={{ color: "#b42318" }}>×</button></span>
+              </div>)}
+              {images.length > 0 && <p style={{ color: "#555", fontSize: 11, marginTop: 6 }}>{images.length} new photo(s) selected. They will be added in this order to the product photos you keep.</p>}
 
               <label htmlFor="product-video" style={{ ...labelStyle, marginTop: 18 }}>Product video (optional, MP4/WebM/MOV, up to 30 MB)</label>
               {editingProduct?.product_video_url && <div style={{ margin: "8px 0" }}>{!removeVideo && <video src={editingProduct.product_video_url} controls playsInline preload="metadata" style={{ display: "block", width: "min(100%, 360px)", maxHeight: 240, background: "#111", borderRadius: 6 }} />}<label style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 8, fontSize: 12 }}><input type="checkbox" checked={removeVideo} onChange={(event) => setRemoveVideo(event.target.checked)} />Remove current video</label></div>}
@@ -879,7 +981,7 @@ export default function AdminPage() {
           <aside style={{ background: "#fff", padding: 24, borderRadius: 9, boxShadow: "0 8px 30px #0000000d" }}>
             <p style={{ color: "#f890c8", letterSpacing: 2, fontSize: 11, fontWeight: 800 }}>ALL STORE PRODUCTS</p>
             <h2 style={{ margin: "8px 0 18px", fontSize: 22 }}>Products ({products.length})</h2>
-            {products.length === 0 ? <p style={{ color: "#777", fontSize: 13 }}>No products found.</p> : products.map((product, index) => {
+            {products.length === 0 ? <p style={{ color: "#777", fontSize: 13 }}>No products found.</p> : products.map((product) => {
               const quickEdit = quickEdits[product.id] || makeQuickProductEdit(product);
               return (
                 <article key={product.id} style={{ display: "grid", gridTemplateColumns: "58px minmax(0, 1fr) 82px", gap: 10, alignItems: "start", padding: "12px 0", borderTop: "1px solid #eee" }}>
@@ -902,9 +1004,7 @@ export default function AdminPage() {
                       {quickSavingId === product.id ? "SAVING..." : "SAVE PRICE & STOCK"}
                     </button>
                   </div>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 5 }}>
-                    <button type="button" aria-label={`Move ${product.name} up`} title="Move up" onClick={() => void moveProduct(product.id, -1)} disabled={index === 0 || orderSaving} style={{ border: "1px solid #ddd", background: "#fff", padding: "5px 0", cursor: index === 0 || orderSaving ? "default" : "pointer", opacity: index === 0 || orderSaving ? 0.45 : 1 }}>↑</button>
-                    <button type="button" aria-label={`Move ${product.name} down`} title="Move down" onClick={() => void moveProduct(product.id, 1)} disabled={index === products.length - 1 || orderSaving} style={{ border: "1px solid #ddd", background: "#fff", padding: "5px 0", cursor: index === products.length - 1 || orderSaving ? "default" : "pointer", opacity: index === products.length - 1 || orderSaving ? 0.45 : 1 }}>↓</button>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 5 }}>
                     <button type="button" onClick={() => void duplicateProduct(product)} disabled={duplicatingId === product.id} style={{ gridColumn: "1 / -1", border: "1px solid #ddd", background: "#fff", padding: "6px 4px", cursor: "pointer", fontSize: 9 }}>{duplicatingId === product.id ? "COPYING..." : "DUPLICATE"}</button>
                     <button type="button" onClick={() => editProduct(product)} style={{ gridColumn: "1 / -1", border: "1px solid #ddd", background: "#fff", padding: "6px 4px", cursor: "pointer", fontSize: 9 }}>EDIT</button>
                     <button type="button" onClick={() => deleteProduct(product)} style={{ gridColumn: "1 / -1", border: "1px solid #f3c6c6", background: "#fff", color: "#b42318", padding: "6px 4px", cursor: "pointer", fontSize: 9 }}>DELETE</button>
@@ -914,6 +1014,7 @@ export default function AdminPage() {
             })}
           </aside>
         </div>
+        </>
         ) : activeTab === "storefront" ? (
           <StorefrontManager config={storefrontConfig} onSaved={(next) => {
             setStorefrontConfig(next);

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { cache } from "react";
-import { notFound } from "next/navigation";
+import { redirect } from "next/navigation";
 import ProductClient, { type Product } from "./product-client";
 import { getPublicCatalogProduct, getCatalogProducts, getRelatedStorefrontProducts } from "@/lib/catalog-server";
 import { localProducts } from "@/lib/catalog";
@@ -44,7 +44,7 @@ export async function generateMetadata({ params }: ProductPageProps): Promise<Me
 export default async function ProductPage({ params }: ProductPageProps) {
   const { id } = await params;
   const product = await readProduct(id);
-  if (!product) notFound();
+  if (!product) redirect("/shop");
 
   const normalizedProduct = {
     ...product,
