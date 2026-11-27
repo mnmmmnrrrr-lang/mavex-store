@@ -24,6 +24,7 @@ type AdminProduct = {
   id: string;
   slug: string;
   status?: string;
+  enabled?: boolean;
   name: string;
   product_type?: string;
   description: string | null;
@@ -213,8 +214,10 @@ export default function AdminPage() {
   const [collectionId, setCollectionId] = useState(DEFAULT_STOREFRONT_CONFIG.collections[0]?.id || "");
   const [subcategoryId, setSubcategoryId] = useState(DEFAULT_STOREFRONT_CONFIG.collections[0]?.subcategories[0]?.id || "");
   const [isFeatured, setIsFeatured] = useState(false);
+  const [productEnabled, setProductEnabled] = useState(true);
   const [quickEdits, setQuickEdits] = useState<Record<string, QuickProductEdit>>({});
   const [quickSavingId, setQuickSavingId] = useState<string | null>(null);
+  const [pageSavingId, setPageSavingId] = useState<string | null>(null);
   const [orderSaving, setOrderSaving] = useState(false);
   const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -350,6 +353,7 @@ export default function AdminPage() {
     setCollectionId(firstCollection?.id || "");
     setSubcategoryId(firstCollection?.subcategories[0]?.id || "");
     setIsFeatured(false);
+    setProductEnabled(true);
     setImages([]);
     setNewImageColors([]);
     setRetainedProductImages([]);
@@ -369,6 +373,7 @@ export default function AdminPage() {
     setCollectionId(product.collection_id || storefrontConfig.collections[0]?.id || "");
     setSubcategoryId(product.subcategory_id || "");
     setIsFeatured(product.is_featured === true);
+    setProductEnabled(product.enabled !== false);
     setProductType(getProductType(product.name, product.product_type));
     setDescription(product.description || "");
     const pantsGuide = /pant|jogger|trouser/i.test(product.name);
@@ -532,6 +537,7 @@ export default function AdminPage() {
     form.set("collectionId", collectionId);
     form.set("subcategoryId", subcategoryId);
     form.set("isFeatured", String(isFeatured));
+    form.set("enabled", String(productEnabled));
     if (!editingId) form.set("sortOrder", String(Math.max(-1, ...products.map((product) => product.sort_order ?? -1)) + 1));
     form.set("variants", JSON.stringify(variants.map((variant) => ({
       id: variant.id,
@@ -655,6 +661,27 @@ export default function AdminPage() {
       setMessage(error instanceof Error ? error.message : "Could not save price and stock.");
     } finally {
       setQuickSavingId(null);
+    }
+  }
+
+  async function setProductPageEnabled(product: AdminProduct, enabled: boolean) {
+    setPageSavingId(product.id);
+    setMessage("");
+    try {
+      const response = await fetch(`/api/admin/products/${encodeURIComponent(product.id)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled }),
+      });
+      const result = await response.json() as AdminProduct & { error?: string };
+      if (!response.ok) throw new Error(result.error || "Could not update the product page.");
+      setProducts((current) => current.map((item) => item.id === product.id ? result : item));
+      if (editingId === product.id) setProductEnabled(enabled);
+      setMessage(enabled ? "Product page is now active." : "Product page is now hidden from customers.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Could not update the product page.");
+    } finally {
+      setPageSavingId(null);
     }
   }
 
@@ -805,7 +832,7 @@ export default function AdminPage() {
       ) : (
         <>
         <nav aria-label="Admin sections" style={{ maxWidth: 1180, margin: "0 auto 20px", display: "flex", gap: 8, overflowX: "auto", background: "#fff", padding: 9, borderRadius: 12, boxShadow: "0 8px 30px #0000000d" }}>
-          {([ ["storefront", "Storefront", storefrontConfig.collections.length], ["products", "Products", products.length], ["orders", "Orders", operations.orders.length], ["returns", "Returns", operations.returns.length], ["comments", "Comments", operations.comments.filter(c => c.status === "pending").length] ] as const).map(([key, label, count]) => <button key={key} type="button" onClick={() => { setActiveTab(key); if (["orders", "returns", "comments"].includes(key)) void loadOperations(); }} style={{ flex: 1, minWidth: 120, border: 0, borderRadius: 8, padding: "13px 16px", cursor: "pointer", fontWeight: 800, background: activeTab === key ? "#17213c" : "#f4f4f6", color: activeTab === key ? "#fff" : "#272727" }}>{label}<span style={{ display: "inline-grid", placeItems: "center", minWidth: 23, height: 23, marginInlineStart: 8, borderRadius: 20, background: activeTab === key ? "#f890c8" : "#fff", color: "#111", fontSize: 11 }}>{count}</span></button>)}
+          {([ ["storefront", "Pages & Flow", storefrontConfig.collections.length], ["products", "Products", products.length], ["orders", "Orders", operations.orders.length], ["returns", "Returns", operations.returns.length], ["comments", "Comments", operations.comments.filter(c => c.status === "pending").length] ] as const).map(([key, label, count]) => <button key={key} type="button" onClick={() => { setActiveTab(key); if (["orders", "returns", "comments"].includes(key)) void loadOperations(); }} style={{ flex: 1, minWidth: 120, border: 0, borderRadius: 8, padding: "13px 16px", cursor: "pointer", fontWeight: 800, background: activeTab === key ? "#17213c" : "#f4f4f6", color: activeTab === key ? "#fff" : "#272727" }}>{label}<span style={{ display: "inline-grid", placeItems: "center", minWidth: 23, height: 23, marginInlineStart: 8, borderRadius: 20, background: activeTab === key ? "#f890c8" : "#fff", color: "#111", fontSize: 11 }}>{count}</span></button>)}
           <button type="button" onClick={logout} style={{ border: "1px solid #eee", borderRadius: 8, padding: "0 15px", background: "#fff", cursor: "pointer" }}>LOG OUT</button>
         </nav>
         {activeTab === "products" ? (
@@ -863,6 +890,7 @@ export default function AdminPage() {
                   <label className="product-placement-featured"><input type="checkbox" checked={isFeatured} onChange={(event) => setIsFeatured(event.target.checked)} /> Feature this product at the top of its listing</label>
                 </> : <p>No main collections yet. Create one in the Storefront tab before saving a product.</p>}
               </fieldset>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12, fontSize: 12, fontWeight: 700 }}><input type="checkbox" checked={productEnabled} onChange={(event) => setProductEnabled(event.target.checked)} />Product page is active and visible to customers</label>
 
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 14 }}>
                 <div><label htmlFor="product-price" style={labelStyle}>Price (EGP)</label><input id="product-price" type="number" min="1" step="1" required value={price} onChange={(event) => setPrice(event.target.value)} style={inputStyle} /></div>
@@ -908,7 +936,7 @@ export default function AdminPage() {
                       <AdminColorInput label={`Linked color name ${index + 1}`} value={link.color} onChange={(value) => updateColorProductLink(link.draftKey, "color", value)} placeholder="Color (e.g. Burgundy)" />
                       <select aria-label={`Product for linked color ${index + 1}`} required value={link.product_id} onChange={(event) => updateColorProductLink(link.draftKey, "product_id", event.target.value)} style={inputStyle}>
                         <option value="">Choose product</option>
-                        {products.filter((product) => product.id !== editingId && (!product.status || product.status === "active") && canLinkProducts({ name, product_type: productType }, product)).map((product) => <option key={product.id} value={product.id}>{product.name}</option>)}
+                        {products.filter((product) => product.id !== editingId && product.enabled !== false && (!product.status || product.status === "active") && canLinkProducts({ name, product_type: productType }, product)).map((product) => <option key={product.id} value={product.id}>{product.name}</option>)}
                       </select>
                       <button type="button" aria-label="Remove linked color" onClick={() => setColorProductLinks((current) => current.filter((item) => item.draftKey !== link.draftKey))} style={{ border: 0, background: "transparent", color: "#b42318", fontSize: 20, cursor: "pointer" }}>×</button>
                     </div>
@@ -988,6 +1016,10 @@ export default function AdminPage() {
                   {product.product_images[0]?.image_url ? <Image src={product.product_images[0].image_url} alt={product.name} width={58} height={68} sizes="58px" quality={80} style={{ width: 58, height: 68, objectFit: "cover", background: "#f2f2f2" }} /> : <div style={{ width: 58, height: 68, background: "#f2f2f2" }} />}
                   <div style={{ minWidth: 0 }}>
                     <strong style={{ fontSize: 12 }}>{product.name}</strong>
+                    <label style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 7, fontSize: 10, color: product.enabled === false ? "#b42318" : "#20834b", fontWeight: 700 }}>
+                      <input type="checkbox" checked={product.enabled !== false} disabled={pageSavingId === product.id} onChange={(event) => void setProductPageEnabled(product, event.target.checked)} />
+                      {pageSavingId === product.id ? "SAVING PAGE STATUS..." : product.enabled === false ? "PAGE HIDDEN" : "PAGE ACTIVE"}
+                    </label>
                     <label style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 7, fontSize: 10, color: "#555" }}>
                       PRICE EGP
                       <input aria-label={`Quick price for ${product.name}`} type="number" min="1" step="1" value={quickEdit.price} disabled={quickSavingId === product.id} onChange={(event) => updateQuickPrice(product, event.target.value)} style={{ ...inputStyle, width: 100, padding: "6px 8px", fontSize: 12 }} />
@@ -1016,7 +1048,7 @@ export default function AdminPage() {
         </div>
         </>
         ) : activeTab === "storefront" ? (
-          <StorefrontManager config={storefrontConfig} onSaved={(next) => {
+          <StorefrontManager config={storefrontConfig} products={products} onSaved={(next) => {
             setStorefrontConfig(next);
             setCollectionId((current) => next.collections.some((item) => item.id === current) ? current : next.collections[0]?.id || "");
             setSubcategoryId((current) => next.collections.some((item) => item.subcategories.some((subcategory) => subcategory.id === current)) ? current : "");

@@ -224,6 +224,7 @@ export async function POST(request: NextRequest) {
       product_type: fields.productType,
       ...placement,
       is_featured: fields.isFeatured,
+      enabled: form.get("enabled") !== "false",
       description: fields.description,
       price: fields.price,
       compare_at_price: fields.compareAtPrice,

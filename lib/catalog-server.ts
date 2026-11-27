@@ -8,7 +8,7 @@ import { getSupabaseAdmin, hasSupabaseAdmin } from "@/lib/supabase-admin";
 import { inferProductPlacement } from "@/lib/storefront-config";
 import { getPublicStorefrontConfig } from "@/lib/storefront-server";
 
-export type StorefrontProduct = Pick<CatalogProduct, "id" | "name" | "description" | "price" | "compare_at_price" | "product_images" | "sort_order"> & {
+export type StorefrontProduct = Pick<CatalogProduct, "id" | "name" | "description" | "price" | "compare_at_price" | "product_images" | "sort_order" | "enabled"> & {
   collection_id: string | null;
   subcategory_id: string | null;
   is_featured: boolean;
@@ -37,6 +37,7 @@ function toStorefrontProduct(product: Partial<CatalogProduct> & Pick<CatalogProd
     price: product.price,
     compare_at_price: product.compare_at_price ?? null,
     sort_order: product.sort_order,
+    enabled: product.enabled,
     product_images: product.product_images || [],
     collection_id: product.collection_id ?? null,
     subcategory_id: product.subcategory_id ?? null,
@@ -63,7 +64,7 @@ async function readStorefrontProducts(): Promise<StorefrontProduct[]> {
   for (const product of state.products) {
     if (!deleted.has(product.id)) merged.set(product.id, toStorefrontProduct(product));
   }
-  return orderByDisplayPosition([...merged.values()]).map((product) => ({
+  return orderByDisplayPosition([...merged.values()].filter((product) => product.enabled !== false)).map((product) => ({
     ...product,
     ...inferProductPlacement(product, storefrontConfig),
     is_featured: product.is_featured === true,
@@ -103,7 +104,7 @@ async function readRelatedStorefrontProducts(
     merged.set(product.id, override ? { ...product, ...override } : product);
   }
 
-  const candidates = orderByDisplayPosition([...merged.values()]).filter(
+  const candidates = orderByDisplayPosition([...merged.values()].filter((product) => product.enabled !== false)).filter(
     (product) => product.id !== excludedId && product.slug !== excludedId
   );
   const isBottoms = (product: CatalogProduct) => /\b(pants?|joggers?|trousers?|shorts?)\b/i.test(`${product.name} ${product.slug}`);
@@ -169,7 +170,7 @@ export async function getCatalogProducts(includeInactive = false): Promise<Catal
   for (const product of state.products) {
     if (!deleted.has(product.id)) merged.set(product.id, product);
   }
-  return orderByDisplayPosition([...merged.values()]);
+  return orderByDisplayPosition([...merged.values()].filter((product) => includeInactive || product.enabled !== false));
 }
 
 export async function getCatalogProduct(id: string, includeInactive = false) {
@@ -196,10 +197,14 @@ export async function getCatalogProduct(id: string, includeInactive = false) {
       .maybeSingle();
     if (overlayError) throw new Error(`Could not load the hosted catalog: ${overlayError.message}`);
     if (row?.is_deleted) return null;
-    if (row?.payload) return row.payload as CatalogProduct;
+    if (row?.payload) {
+      const product = row.payload as CatalogProduct;
+      return !includeInactive && product.enabled === false ? null : product;
+    }
   }
 
-  return databaseProduct || localProduct || null;
+  const product = databaseProduct || localProduct || null;
+  return !includeInactive && product?.enabled === false ? null : product;
 }
 
 const readCachedPublicCatalogProduct = unstable_cache(

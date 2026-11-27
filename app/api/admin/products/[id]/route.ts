@@ -65,7 +65,19 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
     const body: unknown = await request.json();
     if (!body || typeof body !== "object") throw new Error("Enter a valid price and stock update.");
-    const draft = body as { price?: unknown; variants?: unknown };
+    const draft = body as { price?: unknown; variants?: unknown; enabled?: unknown };
+    if (typeof draft.enabled === "boolean" && !("price" in draft) && !("variants" in draft)) {
+      const updated: CatalogProduct = { ...current, enabled: draft.enabled };
+      await saveCatalogProduct(updated);
+      revalidateTag(STOREFRONT_CACHE_TAG, { expire: 0 });
+      revalidatePath("/", "layout");
+      revalidatePath("/", "page");
+      revalidatePath("/product/[id]", "page");
+      revalidatePath("/shop", "page");
+      revalidatePath("/collection/[collectionSlug]", "page");
+      revalidatePath("/collection/[collectionSlug]/[subCategorySlug]", "page");
+      return NextResponse.json(updated);
+    }
     const price = Number(draft.price);
     if (!Number.isFinite(price) || price <= 0) throw new Error("Enter a valid price greater than zero.");
     if (!Array.isArray(draft.variants) || draft.variants.length !== current.product_variants.length) {
@@ -208,6 +220,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       product_type: productType,
       ...placement,
       is_featured: form.has("isFeatured") ? form.get("isFeatured") === "true" : current.is_featured === true,
+      enabled: form.has("enabled") ? form.get("enabled") === "true" : current.enabled !== false,
       description,
       price,
       compare_at_price: compareAtPrice,

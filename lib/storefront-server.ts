@@ -1,5 +1,5 @@
 import { unstable_cache } from "next/cache";
-import { DEFAULT_STOREFRONT_CONFIG, type StorefrontConfig, type StorefrontCollection, type StorefrontSubCategory } from "@/lib/storefront-config";
+import { DEFAULT_SITE_PAGE_STATES, DEFAULT_STOREFRONT_CONFIG, SITE_PAGE_DEFINITIONS, type SitePageState, type StorefrontConfig, type StorefrontCollection, type StorefrontSubCategory } from "@/lib/storefront-config";
 import { STOREFRONT_CACHE_TAG } from "@/lib/storefront-cache";
 import { getSupabaseAdmin, hasSupabaseAdmin } from "@/lib/supabase-admin";
 import { deleteProductImage, getManagedProductImageStoragePath } from "@/lib/store-db";
@@ -20,7 +20,7 @@ export async function getStorefrontConfig(): Promise<StorefrontConfig> {
       return DEFAULT_STOREFRONT_CONFIG;
     }
     const config = data?.data as StorefrontConfig | undefined;
-    return config && Array.isArray(config.collections) ? config : DEFAULT_STOREFRONT_CONFIG;
+    return config && Array.isArray(config.collections) ? normalizeStorefrontConfig(config) : DEFAULT_STOREFRONT_CONFIG;
   } catch (error) {
     console.error("Could not load storefront collections; using defaults:", error);
     return DEFAULT_STOREFRONT_CONFIG;
@@ -54,6 +54,29 @@ function validateEntry<T extends StorefrontCollection | StorefrontSubCategory>(i
   return { ...item, name: item.name.trim(), image_url: validateImageUrl(item.image_url), sort_order: index };
 }
 
+function normalizeStorefrontConfig(input: StorefrontConfig): StorefrontConfig {
+  const pageRoutes = DEFAULT_SITE_PAGE_STATES.map((fallback) => {
+    const saved = input.pageRoutes?.find((page) => page.id === fallback.id);
+    return { ...fallback, enabled: typeof saved?.enabled === "boolean" ? saved.enabled : true, sort_order: Number.isSafeInteger(saved?.sort_order) ? saved!.sort_order : fallback.sort_order };
+  }).sort((a, b) => a.sort_order - b.sort_order).map((page, sort_order) => ({ ...page, sort_order }));
+  return {
+    pageRoutes,
+    collections: input.collections.map((collection, sort_order) => ({
+      ...collection,
+      enabled: collection.enabled !== false,
+      navigation_mode: collection.navigation_mode === "products" ? "products" : "subcategories",
+      sort_order,
+      subcategories: (collection.subcategories || []).map((subcategory, subOrder) => ({
+        ...subcategory,
+        enabled: subcategory.enabled !== false,
+        navigation_mode: subcategory.navigation_mode === "product" ? "product" : "products",
+        direct_product_id: typeof subcategory.direct_product_id === "string" ? subcategory.direct_product_id : null,
+        sort_order: subOrder,
+      })),
+    })),
+  };
+}
+
 export function validateStorefrontConfig(input: unknown): StorefrontConfig {
   if (!input || typeof input !== "object" || !Array.isArray((input as { collections?: unknown }).collections)) throw new Error("Send a valid collection setup.");
   const source = (input as { collections: unknown[] }).collections;
@@ -62,6 +85,7 @@ export function validateStorefrontConfig(input: unknown): StorefrontConfig {
   const slugs = new Set<string>();
   const collections = source.map((raw, index) => {
     const candidate = raw as StorefrontCollection;
+    if (candidate.enabled !== undefined && typeof candidate.enabled !== "boolean") throw new Error("Choose ON or OFF for every main collection.");
     const item = validateEntry(candidate, index, "collection");
     if (ids.has(item.id) || slugs.has(item.slug)) throw new Error("Collection identifiers and URLs must be unique.");
     ids.add(item.id);
@@ -71,14 +95,41 @@ export function validateStorefrontConfig(input: unknown): StorefrontConfig {
     const subSlugs = new Set<string>();
     const subcategories = candidate.subcategories.map((rawSub, subIndex) => {
       const sub = validateEntry(rawSub, subIndex, "sub-category");
+      if (rawSub.enabled !== undefined && typeof rawSub.enabled !== "boolean") throw new Error("Choose ON or OFF for every sub-category.");
       if (subIds.has(sub.id) || subSlugs.has(sub.slug)) throw new Error("Sub-category identifiers and URLs must be unique within their collection.");
       subIds.add(sub.id);
       subSlugs.add(sub.slug);
-      return sub;
+      const rawMode = rawSub.navigation_mode;
+      const directProductId = rawSub.direct_product_id;
+      if (rawMode !== undefined && rawMode !== "products" && rawMode !== "product") throw new Error("Choose a valid sub-category destination.");
+      if (directProductId !== undefined && directProductId !== null && (typeof directProductId !== "string" || directProductId.length > 120)) throw new Error("Choose a valid product for the sub-category destination.");
+      return { ...sub, enabled: rawSub.enabled !== false, navigation_mode: rawMode === "product" ? "product" as const : "products" as const, direct_product_id: typeof directProductId === "string" ? directProductId : null };
     });
-    return { ...item, subcategories };
+    const rawMode = candidate.navigation_mode;
+    if (rawMode !== undefined && rawMode !== "subcategories" && rawMode !== "products") throw new Error("Choose a valid collection destination.");
+    return { ...item, enabled: candidate.enabled !== false, navigation_mode: rawMode === "products" ? "products" as const : "subcategories" as const, subcategories };
   });
-  return { collections };
+
+  const pageInput = (input as { pageRoutes?: unknown }).pageRoutes;
+  const pageSource = pageInput === undefined ? DEFAULT_SITE_PAGE_STATES : pageInput;
+  if (!Array.isArray(pageSource) || pageSource.length > SITE_PAGE_DEFINITIONS.length) throw new Error("Send valid site page settings.");
+  const pageById = new Map<string, boolean>();
+  for (const rawPage of pageSource) {
+    if (!rawPage || typeof rawPage !== "object" || Array.isArray(rawPage)) throw new Error("Send valid site page settings.");
+    const candidate = rawPage as { id?: unknown; enabled?: unknown };
+    if (typeof candidate.id !== "string" || !SITE_PAGE_DEFINITIONS.some((page) => page.id === candidate.id) || pageById.has(candidate.id)) throw new Error("A site page setting is invalid or repeated.");
+    if (typeof candidate.enabled !== "boolean") throw new Error("Choose ON or OFF for every site page.");
+    pageById.set(candidate.id, candidate.enabled);
+  }
+  const pageRoutes: SitePageState[] = [...pageById.entries()].map(([id, enabled]) => ({ id: id as SitePageState["id"], enabled, sort_order: 0 }));
+  for (const fallback of DEFAULT_SITE_PAGE_STATES) {
+    if (!pageById.has(fallback.id)) pageRoutes.push({ ...fallback });
+  }
+  pageRoutes.forEach((page, index) => { page.sort_order = index; });
+  if (!pageRoutes.some((page) => page.enabled && (page.id === "home" || page.id === "shop"))) {
+    throw new Error("Keep either Homepage or Shop enabled so customers always have a safe destination.");
+  }
+  return { collections, pageRoutes };
 }
 
 export async function saveStorefrontConfig(config: StorefrontConfig) {

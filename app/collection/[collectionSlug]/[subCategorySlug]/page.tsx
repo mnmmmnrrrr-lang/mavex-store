@@ -1,8 +1,8 @@
-import { notFound } from "next/navigation";
+import { redirect } from "next/navigation";
 import Link from "next/link";
 import { getStorefrontProducts, type StorefrontProduct } from "@/lib/catalog-server";
 import { localProducts } from "@/lib/catalog";
-import { inferProductPlacement } from "@/lib/storefront-config";
+import { getStorefrontFallback, inferProductPlacement, isSitePageEnabled } from "@/lib/storefront-config";
 import { getPublicStorefrontConfig } from "@/lib/storefront-server";
 import ProductCard from "../../../product-card";
 
@@ -19,9 +19,11 @@ export async function generateStaticParams() {
       subCategorySlug: subcategory.slug,
     }));
     const hasDirectProducts = products.some((product) => product.collection_id === collection.id && !product.subcategory_id);
-    return hasDirectProducts
-      ? [...subcategoryParams, { collectionSlug: collection.slug, subCategorySlug: "direct-products" }]
-      : subcategoryParams;
+    return [
+      ...subcategoryParams,
+      { collectionSlug: collection.slug, subCategorySlug: "all-products" },
+      ...(hasDirectProducts ? [{ collectionSlug: collection.slug, subCategorySlug: "direct-products" }] : []),
+    ];
   });
 }
 
@@ -32,22 +34,39 @@ export default async function CollectionProductsPage({ params }: { params: Promi
     getStorefrontProducts().catch(() => null),
   ]);
   const collection = config.collections.find((item) => item.slug === collectionSlug);
-  if (!collection) notFound();
+  if (!collection) redirect(getStorefrontFallback(config, "subcategory"));
+  if (collection.enabled === false) redirect(getStorefrontFallback(config, "subcategory"));
+
+  if (!isSitePageEnabled(config, "subcategory")) {
+    if (isSitePageEnabled(config, "collection")) redirect(`/collection/${encodeURIComponent(collection.slug)}`);
+    redirect(getStorefrontFallback(config, "subcategory"));
+  }
 
   const directListing = subCategorySlug === "direct-products";
+  const allCollectionProducts = subCategorySlug === "all-products";
   const subcategory = collection.subcategories.find((item) => item.slug === subCategorySlug);
-  if (!directListing && !subcategory) notFound();
+  if (!directListing && !allCollectionProducts && !subcategory) {
+    if (isSitePageEnabled(config, "collection")) redirect(`/collection/${encodeURIComponent(collection.slug)}`);
+    redirect(getStorefrontFallback(config, "subcategory"));
+  }
+  if (subcategory?.enabled === false) {
+    if (isSitePageEnabled(config, "collection")) redirect(`/collection/${encodeURIComponent(collection.slug)}`);
+    redirect(getStorefrontFallback(config, "subcategory"));
+  }
 
   const products: StorefrontProduct[] = loadedProducts || localProducts.map((product) => ({
     ...product,
     ...inferProductPlacement(product, config),
     is_featured: false,
   }));
+  const selectedProduct = subcategory?.direct_product_id ? products.find((product) => product.id === subcategory.direct_product_id && product.collection_id === collection.id && product.subcategory_id === subcategory.id) : null;
+  if (subcategory?.navigation_mode === "product" && selectedProduct && isSitePageEnabled(config, "product")) redirect(`/product/${encodeURIComponent(selectedProduct.id)}`);
+
   const listing = products
     .filter((product) => product.collection_id === collection.id)
-    .filter((product) => directListing ? !product.subcategory_id : product.subcategory_id === subcategory?.id)
+    .filter((product) => allCollectionProducts ? true : directListing ? !product.subcategory_id : product.subcategory_id === subcategory?.id)
     .sort((a, b) => Number(b.is_featured) - Number(a.is_featured) || (a.sort_order ?? 0) - (b.sort_order ?? 0));
-  const heading = directListing ? collection.name : subcategory!.name;
+  const heading = allCollectionProducts || directListing ? collection.name : subcategory!.name;
 
   return (
     <main className="products collection-page">

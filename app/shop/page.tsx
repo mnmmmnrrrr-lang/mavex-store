@@ -2,10 +2,15 @@ import Link from "next/link";
 import ProductCard from "../product-card";
 import { getStorefrontProducts, type StorefrontProduct } from "@/lib/catalog-server";
 import { localProducts } from "@/lib/catalog";
+import { getPublicStorefrontConfig } from "@/lib/storefront-server";
+import { getStorefrontFallback, isSitePageEnabled } from "@/lib/storefront-config";
+import { redirect } from "next/navigation";
 
 export const revalidate = 60;
 
 export default async function ShopPage() {
+  const storefrontConfig = await getPublicStorefrontConfig();
+  if (!isSitePageEnabled(storefrontConfig, "shop")) redirect(getStorefrontFallback(storefrontConfig, "shop"));
   const products: StorefrontProduct[] = (await getStorefrontProducts().catch(() => localProducts.map((product, index) => ({
     ...product, collection_id: null, subcategory_id: null, is_featured: false, sort_order: index,
   }))))

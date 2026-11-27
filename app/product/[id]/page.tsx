@@ -4,6 +4,9 @@ import { redirect } from "next/navigation";
 import ProductClient, { type Product } from "./product-client";
 import { getPublicCatalogProduct, getCatalogProducts, getRelatedStorefrontProducts } from "@/lib/catalog-server";
 import { localProducts } from "@/lib/catalog";
+import type { CatalogProduct } from "@/lib/admin-store";
+import { getPublicStorefrontConfig } from "@/lib/storefront-server";
+import { getStorefrontFallback, isSitePageEnabled } from "@/lib/storefront-config";
 
 export const revalidate = 60;
 
@@ -11,7 +14,7 @@ type ProductPageProps = {
   params: Promise<{ id: string }>;
 };
 
-const readProduct = cache(async (id: string) => {
+const readProduct = cache(async (id: string): Promise<CatalogProduct | null> => {
   try {
     return await getPublicCatalogProduct(id);
   } catch (error) {
@@ -43,8 +46,10 @@ export async function generateMetadata({ params }: ProductPageProps): Promise<Me
 
 export default async function ProductPage({ params }: ProductPageProps) {
   const { id } = await params;
+  const storefrontConfig = await getPublicStorefrontConfig();
+  if (!isSitePageEnabled(storefrontConfig, "product")) redirect(getStorefrontFallback(storefrontConfig, "product"));
   const product = await readProduct(id);
-  if (!product) redirect("/shop");
+  if (!product || product.enabled === false) redirect(getStorefrontFallback(storefrontConfig, "product"));
 
   const normalizedProduct = {
     ...product,

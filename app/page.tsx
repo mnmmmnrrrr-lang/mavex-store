@@ -7,13 +7,16 @@ import { inferProductPlacement } from "@/lib/storefront-config";
 import HomeSearch from "./home-search";
 import AccountNav from "./account-nav";
 import CollectionCard from "./collection-card";
+import { getCollectionHref, getStorefrontFallback, isSitePageEnabled } from "@/lib/storefront-config";
+import { redirect } from "next/navigation";
 
 export const revalidate = 60;
 
 export default async function Home() {
   let loadError = false;
   const storefrontConfig = await getPublicStorefrontConfig();
-  const collections = [...storefrontConfig.collections].sort((a, b) => a.sort_order - b.sort_order);
+  if (!isSitePageEnabled(storefrontConfig, "home")) redirect(getStorefrontFallback(storefrontConfig, "home"));
+  const collections = [...storefrontConfig.collections].filter((collection) => collection.enabled !== false).sort((a, b) => a.sort_order - b.sort_order);
   let products: StorefrontProduct[];
 
   try {
@@ -34,6 +37,7 @@ export default async function Home() {
       (a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0),
     ),
   }));
+  const menuPages = [...(storefrontConfig.pageRoutes || [])].sort((a, b) => a.sort_order - b.sort_order);
 
   return (
     <main>
@@ -46,53 +50,56 @@ export default async function Home() {
           </Link>
         </h1>
         <nav>
-          <Link href="#home">HOME</Link>
-          <Link href="/shop">SHOP</Link>
-          <Link href="#about">ABOUT</Link>
-          <AccountNav />
+          {menuPages.filter((page) => page.enabled && ["home", "shop", "about", "account"].includes(page.id)).map((page) => page.id === "home"
+            ? <Link key={page.id} href="#home">HOME</Link>
+            : page.id === "shop"
+              ? <Link key={page.id} href="/shop">SHOP</Link>
+              : page.id === "about"
+                ? <Link key={page.id} href="#about">ABOUT</Link>
+                : <AccountNav key={page.id} />)}
         </nav>
-        <HomeSearch products={products} />
-        <Link href="/cart" className="navbar-bag" aria-label="Shopping bag">
+        {isSitePageEnabled(storefrontConfig, "shop") && <HomeSearch products={products} />}
+        {isSitePageEnabled(storefrontConfig, "cart") && <Link href="/cart" className="navbar-bag" aria-label="Shopping bag">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <path d="M5 8.5h14l1 12H4l1-12Z" />
             <path d="M8.5 8.5V6.8a3.5 3.5 0 0 1 7 0v1.7" />
           </svg>
           <span>BAG</span>
-        </Link>
+        </Link>}
       </header>
 
-      <section className="hero" id="home">
+      {isSitePageEnabled(storefrontConfig, "hero") && <section className="hero" id="home">
         <div className="hero-content">
           <p>PREMIUM STREETWEAR</p>
           <h2>NOT JUST<br />CLOTHING<span>.</span><br /><em>YOUR IDENTITY.</em></h2>
           <p>EXPRESS YOURSELF. WEAR MAVEX.</p>
           <div className="hero-actions">
-            <Link href="#shop" className="shop-button">SHOPPING NOW</Link>
+            <Link href={isSitePageEnabled(storefrontConfig, "collections_section") ? "#shop" : "/shop"} className="shop-button">SHOPPING NOW</Link>
           </div>
         </div>
-      </section>
+      </section>}
 
-      <section className="products" id="shop">
+      {isSitePageEnabled(storefrontConfig, "collections_section") && <section className="products" id="shop">
         <p>DISCOVER MAVEX</p>
         <h2>WINTER 27 COLLECTION<span>.</span></h2>
         {loadError && <p>THE STARTER COLLECTION IS SHOWN WHILE THE CATALOG RECONNECTS.</p>}
         {collections.length === 0 ? <p>NO COLLECTIONS AVAILABLE RIGHT NOW.</p> : <div className="collection-grid">
-          {collections.map((collection) => <CollectionCard key={collection.id} name={collection.name} image={collection.image_url} href={`/collection/${encodeURIComponent(collection.slug)}`} />)}
+          {collections.map((collection) => <CollectionCard key={collection.id} name={collection.name} image={collection.image_url} href={getCollectionHref(storefrontConfig, collection)} />)}
         </div>}
-      </section>
+      </section>}
 
-      <section className="about" id="about">
+      {isSitePageEnabled(storefrontConfig, "about") && <section className="about" id="about">
         <p>THIS IS MORE THAN FASHION.</p>
         <h2>WEAR YOUR<br /><span>IDENTITY.</span></h2>
-      </section>
+      </section>}
 
       <footer>
         <h2>MAVEX®</h2>
         <p>STREET CULTURE. OWN YOUR STYLE.</p>
         <small>© 2026 MAVEX. ALL RIGHTS RESERVED.</small>
         <p style={{ marginTop: 16, display: "flex", justifyContent: "center", gap: 18 }}>
-          <Link href="/account" style={{ color: "#555", fontSize: 11 }}>MY ORDERS</Link>
-          <Link href="/returns" style={{ color: "#555", fontSize: 11 }}>RETURNS &amp; EXCHANGES</Link>
+          {isSitePageEnabled(storefrontConfig, "account") && <Link href="/account" style={{ color: "#555", fontSize: 11 }}>MY ORDERS</Link>}
+          {isSitePageEnabled(storefrontConfig, "returns") && <Link href="/returns" style={{ color: "#555", fontSize: 11 }}>RETURNS &amp; EXCHANGES</Link>}
           <Link href="/admin" style={{ color: "#888", fontSize: 10 }}>ADMIN</Link>
         </p>
       </footer>

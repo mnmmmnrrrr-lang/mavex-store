@@ -27,6 +27,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       slug: newId,
       name,
       sort_order: sortOrder,
+      enabled: true,
       product_video_url: null,
       color_product_links: [],
       product_images: source.product_images.map((image) => ({ ...image, alt_text: name })),
@@ -41,6 +42,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     revalidatePath("/", "layout");
     revalidatePath("/", "page");
     revalidatePath("/product/[id]", "page");
+    revalidatePath("/shop", "page");
+    revalidatePath("/collection/[collectionSlug]", "page");
+    revalidatePath("/collection/[collectionSlug]/[subCategorySlug]", "page");
     return NextResponse.json(duplicate, { status: 201 });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Could not duplicate the product." }, { status: 400 });

@@ -49,6 +49,11 @@ export async function PUT(request: NextRequest) {
     revalidatePath("/shop", "page");
     revalidatePath("/collection/[collectionSlug]", "page");
     revalidatePath("/collection/[collectionSlug]/[subCategorySlug]", "page");
+    revalidatePath("/product/[id]", "page");
+    revalidatePath("/account", "page");
+    revalidatePath("/cart", "page");
+    revalidatePath("/checkout", "page");
+    revalidatePath("/returns", "page");
     return NextResponse.json(next);
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Could not save storefront collections." }, { status: 400 });
