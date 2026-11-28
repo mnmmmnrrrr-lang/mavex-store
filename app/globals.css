@@ -1536,7 +1536,7 @@ footer small {
   .navbar .logo {
     grid-column: 2;
     grid-row: 1;
-    width: clamp(96px, 25vw, 124px);
+    width: clamp(68px, 19vw, 90px);
     justify-self: center;
   }
 
@@ -1581,7 +1581,7 @@ footer small {
   }
 
   .hero h2 {
-    font-size: clamp(42px, 11vw, 64px);
+    font-size: clamp(32px, 9vw, 48px);
   }
 
   .products {

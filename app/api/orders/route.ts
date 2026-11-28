@@ -133,8 +133,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Complete your delivery details and check your phone number." }, { status: 400 });
     }
     if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return NextResponse.json({ error: "Enter a valid email address." }, { status: 400 });
-    const payment = typeof body.payment === "string" ? body.payment : "cod";
-    if (!["cod", "vodafone", "instapay"].includes(payment)) return NextResponse.json({ error: "Choose a valid payment method." }, { status: 400 });
+    const payment = typeof body.payment === "string" ? body.payment : "";
+    if (!["vodafone", "instapay"].includes(payment)) return NextResponse.json({ error: "Cash on Delivery is unavailable. Choose Vodafone Cash or InstaPay." }, { status: 400 });
 
     const requestedVariants = new Map<string, { productId: string; size: string; color: string; quantity: number }>();
     for (const candidate of incomingItems) {
@@ -173,11 +173,9 @@ export async function POST(request: NextRequest) {
     if (!Number.isFinite(subtotal)) return NextResponse.json({ error: "The order total is invalid. Please refresh your bag." }, { status: 400 });
     const id = newOperationId("MVX");
     let proof = "";
-    if (payment !== "cod") {
-      if (typeof body.proof !== "string" || !body.proof || body.proof.length > 4 * 1024 * 1024 + 100) return NextResponse.json({ error: "Upload a JPG, PNG, or WebP payment screenshot up to 3 MB." }, { status: 400 });
-      proof = await savePaymentProof(body.proof, id);
-      uploadedProof = proof;
-    }
+    if (typeof body.proof !== "string" || !body.proof || body.proof.length > 4 * 1024 * 1024 + 100) return NextResponse.json({ error: "Upload a JPG, PNG, or WebP payment screenshot up to 3 MB." }, { status: 400 });
+    proof = await savePaymentProof(body.proof, id);
+    uploadedProof = proof;
     const order: StoreOrder = {
       id,
       customer: {
@@ -187,7 +185,7 @@ export async function POST(request: NextRequest) {
       },
       governorate, items, subtotal, shipping: 120, total: subtotal + 120, payment,
       transaction: typeof body.transaction === "string" ? body.transaction.trim().slice(0, 100) : "", proof,
-      status: payment === "cod" ? "Pending confirmation" : "Awaiting payment review", date: new Date().toISOString(),
+      status: "Awaiting payment review", date: new Date().toISOString(),
     };
     await saveOrder(order);
     uploadedProof = "";

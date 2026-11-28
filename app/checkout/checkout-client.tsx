@@ -23,10 +23,14 @@ const PAYMENT = {
 };
 
 const PAYMENT_LABELS: Record<string, string> = {
-  cod: "Cash on Delivery",
   vodafone: "Vodafone Cash",
   instapay: "InstaPay",
 };
+const ACTIVE_PAYMENT_METHODS = ["vodafone", "instapay"] as const;
+const PAYMENT_METHODS = [
+  { id: "vodafone", label: "Vodafone Cash" },
+  { id: "instapay", label: "InstaPay" },
+] as const;
 
 type OrderConfirmation = {
   id: string;
@@ -37,7 +41,7 @@ type OrderConfirmation = {
 
 export default function CheckoutPage() {
   const [cart, setCart] = useState<CartItem[]>([]);
-  const [payment, setPayment] = useState("cod");
+  const [payment, setPayment] = useState<(typeof ACTIVE_PAYMENT_METHODS)[number]>("instapay");
   const [governorate, setGovernorate] = useState("");
   const [proof, setProof] = useState("");
   const [readingProof, setReadingProof] = useState(false);
@@ -149,6 +153,7 @@ export default function CheckoutPage() {
     }
 
     const nextErrors: Record<string, string> = {};
+    if (!ACTIVE_PAYMENT_METHODS.some((method) => method === payment)) nextErrors.payment = "Choose Vodafone Cash or InstaPay.";
     if (!form.name.trim()) nextErrors.name = "Enter your full name.";
     if (!form.phone.trim()) nextErrors.phone = "Enter your mobile number.";
     else if (!/^01[0125][0-9]{8}$/.test(form.phone.trim())) nextErrors.phone = "Enter a valid Egyptian mobile number, such as 01012345678.";
@@ -158,8 +163,8 @@ export default function CheckoutPage() {
     if (!form.city.trim()) nextErrors.city = "Enter your city or district.";
     if (!form.village.trim()) nextErrors.village = "Enter your village or area.";
     if (!form.street.trim()) nextErrors.street = "Enter your street address.";
-    if (payment !== "cod" && readingProof) nextErrors.proof = "Please wait for the payment screenshot to finish loading.";
-    else if (payment !== "cod" && !proof) nextErrors.proof = "Upload your payment transfer screenshot.";
+    if (readingProof) nextErrors.proof = "Please wait for the payment screenshot to finish loading.";
+    else if (!proof) nextErrors.proof = "Upload your payment transfer screenshot.";
     if (Object.keys(nextErrors).length) {
       setFieldErrors(nextErrors);
       setMessage("");
@@ -255,11 +260,9 @@ export default function CheckoutPage() {
           <p className="order-confirmation-eyebrow">MAVEX ORDER UPDATE</p>
           <h1>ORDER CONFIRMED!</h1>
           <p className="order-confirmation-intro">Thank you. Your order has been received successfully.</p>
-          {confirmation.payment !== "cod" && (
-            <p className="order-confirmation-payment-note">
-              Your {PAYMENT_LABELS[confirmation.payment] || "online payment"} transfer will be reviewed before your order is processed.
-            </p>
-          )}
+          <p className="order-confirmation-payment-note">
+            Your {PAYMENT_LABELS[confirmation.payment] || "online payment"} transfer will be reviewed before your order is processed.
+          </p>
 
           <div className="order-confirmation-reference">
             <div className="order-confirmation-number-copy">
@@ -435,11 +438,7 @@ export default function CheckoutPage() {
             03. PAYMENT METHOD
           </h2>
 
-          {[
-            { id: "vodafone", label: "Vodafone Cash" },
-            { id: "instapay", label: "InstaPay" },
-            { id: "cod", label: "Cash on Delivery" },
-          ].map((method) => (
+          {PAYMENT_METHODS.map((method) => (
             <label key={method.id} style={{
               display: "flex",
               alignItems: "center",
@@ -459,18 +458,16 @@ export default function CheckoutPage() {
               <strong>{method.label}</strong>
             </label>
           ))}
+          {fieldErrors.payment && <small style={errorStyle}>{fieldErrors.payment}</small>}
 
-          {payment !== "cod" && (
-            <div style={{
-              background: "#fff5fa",
-              border: "1px solid #f890c8",
-              padding: 16,
-              borderRadius: 6,
-              marginTop: 15
-            }}>
-              <h3 style={{ marginBottom: 12 }}>
-                Transfer payment
-              </h3>
+          <div style={{
+            background: "#fff5fa",
+            border: "1px solid #f890c8",
+            padding: 16,
+            borderRadius: 6,
+            marginTop: 15
+          }}>
+            <h3 style={{ marginBottom: 12 }}>Transfer payment</h3>
 
               {payment === "vodafone" ? (
                 <p style={{ lineHeight: 1.8 }}>
@@ -515,8 +512,7 @@ export default function CheckoutPage() {
               <input style={inputStyle} value={transaction}
                 onChange={(e) => setTransaction(e.target.value)}
                 placeholder="Transaction number" />
-            </div>
-          )}
+          </div>
 
           <button onClick={submitOrder} disabled={savingOrder} style={{
             width: "100%",
@@ -575,7 +571,7 @@ export default function CheckoutPage() {
                   EGP {(item.price * item.quantity).toLocaleString("en-EG")}
                 </p>
               </div>
-            </div>
+          </div>
           ))}
 
           <hr style={{ border: 0, borderTop: "1px solid #eee", margin: "15px 0" }} />
